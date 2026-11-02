@@ -66,17 +66,44 @@
 		<div class="app-card p-5">
 			<h2 class="app-card-title">Taux du jour</h2>
 			<div class="mt-5 space-y-4 text-sm">
-				<div class="flex justify-between">
-					<span class="text-slate-500">USD / CDF</span>
-					<span class="font-semibold text-slate-950">2,780</span>
+				<div class="rounded-xl bg-slate-50/50 p-3">
+					<p class="mb-2 text-xs font-medium text-slate-500">USD / CDF</p>
+					<div class="flex justify-between gap-4">
+						<div class="flex-1">
+							<p class="text-xs text-slate-500">Achat</p>
+							<p class="mt-1 font-semibold text-slate-950">2,775</p>
+						</div>
+						<div class="flex-1">
+							<p class="text-xs text-slate-500">Vente</p>
+							<p class="mt-1 font-semibold text-slate-950">2,785</p>
+						</div>
+					</div>
 				</div>
-				<div class="flex justify-between">
-					<span class="text-slate-500">EUR / CDF</span>
-					<span class="font-semibold text-slate-950">3,020</span>
+				<div class="rounded-xl bg-slate-50/50 p-3">
+					<p class="mb-2 text-xs font-medium text-slate-500">EUR / CDF</p>
+					<div class="flex justify-between gap-4">
+						<div class="flex-1">
+							<p class="text-xs text-slate-500">Achat</p>
+							<p class="mt-1 font-semibold text-slate-950">3,015</p>
+						</div>
+						<div class="flex-1">
+							<p class="text-xs text-slate-500">Vente</p>
+							<p class="mt-1 font-semibold text-slate-950">3,025</p>
+						</div>
+					</div>
 				</div>
-				<div class="flex justify-between">
-					<span class="text-slate-500">GBP / CDF</span>
-					<span class="font-semibold text-slate-950">3,510</span>
+				<div class="rounded-xl bg-slate-50/50 p-3">
+					<p class="mb-2 text-xs font-medium text-slate-500">GBP / CDF</p>
+					<div class="flex justify-between gap-4">
+						<div class="flex-1">
+							<p class="text-xs text-slate-500">Achat</p>
+							<p class="mt-1 font-semibold text-slate-950">3,505</p>
+						</div>
+						<div class="flex-1">
+							<p class="text-xs text-slate-500">Vente</p>
+							<p class="mt-1 font-semibold text-slate-950">3,515</p>
+						</div>
+					</div>
 				</div>
 			</div>
 		</div>

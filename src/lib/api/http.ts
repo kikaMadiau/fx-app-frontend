@@ -1,10 +1,13 @@
 import { env } from '$env/dynamic/public';
 import { ApiError, extractFieldErrors, mapHttpStatusToMessage } from '$lib/utils/api-errors.js';
+import { clearSession, getStoredAccessToken } from '$lib/stores/session.js';
 
 type RequestOptions = {
 	method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
 	body?: unknown;
 	headers?: Record<string, string>;
+	/** Set true for endpoints that must not send the stored Bearer token (e.g. login). */
+	skipAuth?: boolean;
 };
 
 function getApiBaseUrl(): string {
@@ -38,6 +41,13 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
 		...options.headers
 	};
 
+	if (!options.skipAuth) {
+		const token = getStoredAccessToken();
+		if (token) {
+			headers.Authorization = `Bearer ${token}`;
+		}
+	}
+
 	const init: RequestInit = {
 		method: options.method ?? 'GET',
 		headers
@@ -60,6 +70,10 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
 
 	if (response.ok) {
 		return payload as T;
+	}
+
+	if (response.status === 401 && !options.skipAuth) {
+		clearSession();
 	}
 
 	const fieldErrors = extractFieldErrors(payload);

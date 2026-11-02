@@ -1,62 +1,43 @@
 import { apiRequest } from '$lib/api/http.js';
+import { get } from 'svelte/store';
+import { session } from '$lib/stores/session.js';
+import { ApiError } from '$lib/utils/api-errors.js';
 import type { ClientCreatePayload } from '$lib/types/client.js';
-import type {
-	CreateTransactionWithExistingClientRequest,
-	CreateTransactionWithNewClientRequest,
-	CreatedTransaction,
-	TransactionFormData,
-	TransactionPayload
+import {
+	TARGET_CURRENCY,
+	type CreateTransactionWithExistingClientRequest,
+	type CreateTransactionWithNewClientRequest,
+	type CreatedTransaction,
+	type TransactionApiResponse,
+	type TransactionFormData,
+	type TransactionPayload
 } from '$lib/types/transaction.js';
 import { normalizePhone } from '$lib/utils/phone.js';
 
-type TransactionApiResponse = {
-	id: string;
-	client?: {
-		first_name?: string;
-		last_name?: string;
-		phone?: string;
-		identity_document_type?: string;
-		identity_document_number?: string;
-	};
-	client_name?: string;
-	type?: string;
-	currency?: string;
-	amount?: number | string;
-	rate?: number | string;
-	status?: string;
-	created_at?: string;
-	date?: string;
-};
+function getCurrentTraderId(): number {
+	const current = get(session);
+	if (!current?.trader?.id) {
+		throw new ApiError('Votre session a expire. Veuillez vous reconnecter.', 401);
+	}
+
+	return current.trader.id;
+}
 
 function getFieldValue(value: string | number): string {
 	return String(value).trim();
 }
 
+// Note : le backend ne supporte pas encore payment_method / reference / note / kyc_status.
+// Ces champs restent dans le formulaire (UI) mais ne sont pas envoyes a l'API pour le moment.
 function buildTransactionPayload(form: TransactionFormData): TransactionPayload {
-	const rateValue = getFieldValue(form.rate);
-	const payload: TransactionPayload = {
+	return {
 		amount: Number(form.amount),
 		currency: form.currency,
-		type: form.type
+		target_currency: TARGET_CURRENCY,
+		type: form.type,
+		rate: Number(getFieldValue(form.rate)) || 0,
+		trader_id: getCurrentTraderId()
 	};
-
-	if (rateValue) {
-		payload.rate = Number(rateValue);
-	}
-
-	if (form.paymentMethod) {
-		payload.payment_method = form.paymentMethod;
-	}
-
-	if (form.reference.trim()) {
-		payload.reference = form.reference.trim();
-	}
-
-	if (form.note.trim()) {
-		payload.note = form.note.trim();
-	}
-
-	return payload;
 }
 
 function formatDisplayAmount(amount: number | string, currency: string): string {
@@ -89,72 +70,55 @@ function formatCdfAmount(amount: number): string {
 	return `${new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 2 }).format(amount)} CDF`;
 }
 
-function getCounterValue(
-	amount: number | string | undefined,
-	rate: number | string | undefined
-): string {
-	const numericAmount = Number(amount);
-	const numericRate = Number(rate);
-
-	if (!Number.isFinite(numericAmount) || !Number.isFinite(numericRate) || numericRate <= 0) {
+function getCounterValue(amount: number | undefined, rate: number | undefined): string {
+	if (!Number.isFinite(amount) || !Number.isFinite(rate) || !rate || rate <= 0) {
 		return '-';
 	}
 
-	return formatCdfAmount(numericAmount * numericRate);
+	return formatCdfAmount((amount as number) * (rate as number));
 }
 
 function mapApiResponseToTransaction(
 	response: TransactionApiResponse,
 	form: TransactionFormData,
-	fallbackClientName: string
+	fallbackClientName: string,
+	fallbackPhone: string
 ): CreatedTransaction {
-	const clientName =
-		response.client_name ||
-		[response.client?.first_name, response.client?.last_name].filter(Boolean).join(' ') ||
-		fallbackClientName;
-
 	const currency = response.currency || form.currency;
-	const amount =
-		response.amount !== undefined
-			? formatDisplayAmount(response.amount, currency)
-			: formatDisplayAmount(form.amount, form.currency);
-	const transactionType = response.type || `${form.type} ${form.currency}`;
-	const rate = response.rate !== undefined ? String(response.rate) : form.rate || '-';
-	const currencyCounterValue = getCounterValue(
-		response.amount ?? form.amount,
-		response.rate ?? form.rate
-	);
+	const amount = formatDisplayAmount(response.amount, currency);
+	const transactionType = response.type || form.type;
+	const rate = response.rate !== undefined ? String(response.rate) : String(form.rate || '-');
+	const currencyCounterValue = getCounterValue(response.amount, response.rate);
 
 	return {
-		id: response.id || form.reference || `TX-${Date.now()}`,
-		client: clientName,
+		id: String(response.id),
+		client: fallbackClientName,
 		type: transactionType,
 		amount,
 		rate,
-		status: response.status || 'En cours',
-		date: formatDisplayDate(response.created_at || response.date),
-		amountGivenToClient: transactionType.startsWith('Achat') ? currencyCounterValue : amount,
+		status: response.status || 'Terminee',
+		riskLevel: response.risk_level,
+		date: formatDisplayDate(response.created_at),
+		amountGivenToClient: currencyCounterValue,
 		currencyCounterValue,
-		clientPhone: response.client?.phone || form.phone,
-		identityDocumentType:
-			response.client?.identity_document_type || form.identityDocumentType || '-',
-		identityDocumentNumber:
-			response.client?.identity_document_number || form.identityDocumentNumber || '-'
+		clientPhone: fallbackPhone,
+		identityDocumentType: form.identityDocumentType || '-',
+		identityDocumentNumber: form.identityDocumentNumber || '-'
 	};
 }
 
 export async function createTransactionWithNewClient(
 	form: TransactionFormData
 ): Promise<CreatedTransaction> {
+	const client: ClientCreatePayload = {
+		full_name: `${form.firstName.trim()} ${form.lastName.trim()}`.trim(),
+		phone: normalizePhone(form.phone),
+		id_type: form.identityDocumentType.trim() || undefined,
+		id_number: form.identityDocumentNumber.trim() || undefined
+	};
+
 	const request: CreateTransactionWithNewClientRequest = {
-		client: {
-			first_name: form.firstName.trim(),
-			last_name: form.lastName.trim(),
-			phone: normalizePhone(form.phone),
-			kyc_status: form.kycStatus,
-			identity_document_type: form.identityDocumentType.trim(),
-			identity_document_number: form.identityDocumentNumber.trim()
-		},
+		client,
 		transaction: buildTransactionPayload(form)
 	};
 
@@ -163,20 +127,20 @@ export async function createTransactionWithNewClient(
 		body: request
 	});
 
-	return mapApiResponseToTransaction(
-		response,
-		form,
-		`${form.firstName.trim()} ${form.lastName.trim()}`.trim()
-	);
+	return mapApiResponseToTransaction(response, form, client.full_name, client.phone);
 }
 
 export async function createTransactionWithExistingClient(
-	clientId: string,
-	form: TransactionFormData
+	clientId: number,
+	form: TransactionFormData,
+	clientFullName: string,
+	clientPhone: string
 ): Promise<CreatedTransaction> {
 	const request: CreateTransactionWithExistingClientRequest = {
-		client_id: clientId,
-		transaction: buildTransactionPayload(form)
+		transaction: {
+			...buildTransactionPayload(form),
+			customer_id: clientId
+		}
 	};
 
 	const response = await apiRequest<TransactionApiResponse>('/transactions', {
@@ -184,5 +148,5 @@ export async function createTransactionWithExistingClient(
 		body: request
 	});
 
-	return mapApiResponseToTransaction(response, form, 'Client existant');
+	return mapApiResponseToTransaction(response, form, clientFullName, clientPhone);
 }

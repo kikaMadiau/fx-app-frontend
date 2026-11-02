@@ -1,8 +1,14 @@
 <script lang="js">
-	let { className = 'app-input', inputType = 'text', type = inputType, ...restProps } = $props();
+	let {
+		className = 'app-input',
+		inputType = 'text',
+		type = inputType,
+		value = $bindable(''),
+		...restProps
+	} = $props();
 </script>
 
-<input class={className} {type} {...restProps} />
+<input class={className} {type} bind:value {...restProps} />
 
 <style>
 	input {

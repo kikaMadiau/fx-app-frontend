@@ -4,14 +4,18 @@ export type TransactionType = 'Achat' | 'Vente';
 export type TransactionCurrency = 'USD' | 'EUR' | 'GBP';
 export type PaymentMethod = 'Cash' | 'Banque' | 'Mobile money';
 
+/** Devise de contrepartie de l'agence : toutes les transactions sont converties en CDF. */
+export const TARGET_CURRENCY = 'CDF';
+
+// Ce que le backend attend réellement dans `transaction` (voir CreateTransactionRequest côté Go).
 export type TransactionPayload = {
 	amount: number;
 	currency: TransactionCurrency;
+	target_currency: string;
 	type: TransactionType;
-	rate?: number;
-	payment_method?: PaymentMethod;
-	reference?: string;
-	note?: string;
+	rate: number;
+	trader_id: number;
+	customer_id?: number;
 };
 
 export type CreateTransactionWithNewClientRequest = {
@@ -20,8 +24,24 @@ export type CreateTransactionWithNewClientRequest = {
 };
 
 export type CreateTransactionWithExistingClientRequest = {
-	client_id: string;
 	transaction: TransactionPayload;
+};
+
+// Réponse brute renvoyée par le backend (entity.Transaction), sans objet client imbriqué.
+export type TransactionApiResponse = {
+	id: number;
+	amount: number;
+	currency: string;
+	target_currency?: string;
+	type: string;
+	rate: number;
+	converted_amount?: number;
+	risk_level?: string;
+	risk_score?: number;
+	status: string;
+	created_at?: string;
+	trader_id: number;
+	customer_id: number;
 };
 
 export type CreatedTransaction = {
@@ -31,6 +51,7 @@ export type CreatedTransaction = {
 	amount: string;
 	rate: string;
 	status: string;
+	riskLevel?: string;
 	date?: string;
 	amountGivenToClient?: string;
 	currencyCounterValue?: string;
@@ -43,7 +64,7 @@ export type TransactionFormData = {
 	firstName: string;
 	lastName: string;
 	phone: string;
-	kycStatus: ClientCreatePayload['kyc_status'];
+	kycStatus: 'Verifie' | 'A completer' | 'En revue';
 	identityDocumentType: string;
 	identityDocumentNumber: string;
 	type: TransactionType;

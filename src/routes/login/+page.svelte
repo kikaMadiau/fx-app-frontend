@@ -1,6 +1,38 @@
-<script>
+<script lang="ts">
+	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import Input from '$lib/components/ui/Input.svelte';
+	import { login } from '$lib/api/auth.js';
+	import { ApiError, getUserFacingErrorMessage } from '$lib/utils/api-errors.js';
+
+	let email = $state('');
+	let password = $state('');
+	let formError = $state('');
+	let isSubmitting = $state(false);
+
+	async function handleSubmit(event: SubmitEvent) {
+		event.preventDefault();
+		formError = '';
+
+		if (!email.trim() || !password) {
+			formError = 'Veuillez renseigner votre e-mail et votre mot de passe.';
+			return;
+		}
+
+		isSubmitting = true;
+
+		try {
+			await login(email.trim(), password);
+			await goto(resolve('/dashboard'));
+		} catch (error) {
+			formError =
+				error instanceof ApiError
+					? error.message
+					: getUserFacingErrorMessage(error);
+		} finally {
+			isSubmitting = false;
+		}
+	}
 </script>
 
 <div class="flex min-h-[calc(100vh-80px)] items-center justify-center px-6 py-12">
@@ -18,7 +50,13 @@
 		</div>
 
 		<div class="app-card p-8">
-			<form action="/dashboard" method="post" class="space-y-5">
+			{#if formError}
+				<div class="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+					{formError}
+				</div>
+			{/if}
+
+			<form onsubmit={handleSubmit} class="space-y-5">
 				<div>
 					<label for="usermail" class="mb-2 block text-sm font-semibold text-slate-700">
 						Adresse e-mail
@@ -29,6 +67,7 @@
 						className="app-input"
 						placeholder="vous@exemple.com"
 						name="usermail"
+						bind:value={email}
 					/>
 				</div>
 
@@ -51,10 +90,17 @@
 						className="app-input"
 						placeholder="••••••••"
 						name="password"
+						bind:value={password}
 					/>
 				</div>
 
-				<button type="submit" class="app-button app-button-primary w-full"> Se connecter </button>
+				<button
+					type="submit"
+					class="app-button app-button-primary w-full disabled:cursor-not-allowed disabled:opacity-60"
+					disabled={isSubmitting}
+				>
+					{isSubmitting ? 'Connexion...' : 'Se connecter'}
+				</button>
 			</form>
 
 			<div class="mt-6 border-t border-slate-100 pt-6 text-center">

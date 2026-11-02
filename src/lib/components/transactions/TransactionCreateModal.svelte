@@ -155,9 +155,8 @@
 
 		if (result.status === 'success') {
 			foundClient = result.client;
-			form.identityDocumentType = result.client.identity_document_type || form.identityDocumentType;
-			form.identityDocumentNumber =
-				result.client.identity_document_number || form.identityDocumentNumber;
+			form.identityDocumentType = result.client.id_type || form.identityDocumentType;
+			form.identityDocumentNumber = result.client.id_number || form.identityDocumentNumber;
 		}
 	}
 
@@ -182,7 +181,12 @@
 			const created =
 				scenario === 'new'
 					? await createTransactionWithNewClient(form)
-					: await createTransactionWithExistingClient(foundClient!.id, form);
+					: await createTransactionWithExistingClient(
+							foundClient!.id,
+							form,
+							getClientFullName(foundClient!),
+							foundClient!.phone
+						);
 
 			successMessage = 'Transaction creee avec succes.';
 			onSuccess(created);

@@ -131,143 +131,182 @@
 
 <style>
 	:global(body) {
-		background: #f5f7fb;
-		color: #111827;
+		background: linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%);
+		color: #0f172a;
 	}
 	.home-page {
 		position: relative;
 		isolation: isolate;
-		padding-bottom: 72px;
+		padding-bottom: 80px;
 		background:
-			linear-gradient(180deg, #f8fafc 0%, #eef2f7 58%, #f7f8fb 100%),
-			linear-gradient(90deg, rgb(15 23 42 / 0.04) 1px, transparent 1px),
-			linear-gradient(180deg, rgb(15 23 42 / 0.04) 1px, transparent 1px);
-		background-size:
-			auto,
-			44px 44px,
-			44px 44px;
+			radial-gradient(circle at 0% 0%, rgba(14, 165, 233, 0.05) 0%, transparent 50%),
+			radial-gradient(circle at 100% 100%, rgba(16, 185, 129, 0.05) 0%, transparent 50%);
 	}
 	.page-section {
-		margin-right: clamp(18px, 6vw, 88px);
-		margin-bottom: 40px;
-		margin-left: clamp(18px, 6vw, 88px);
-		border: 1px solid rgb(15 23 42 / 0.08);
-		border-radius: 28px;
-		box-shadow: 0 24px 70px rgb(15 23 42 / 0.12);
+		margin-right: clamp(20px, 5vw, 80px);
+		margin-bottom: 56px;
+		margin-left: clamp(20px, 5vw, 80px);
+		border: 1px solid rgba(15, 23, 42, 0.08);
+		border-radius: 32px;
+		box-shadow: 0 24px 60px rgba(15, 23, 42, 0.06);
 		overflow: hidden;
+		transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+	}
+	.page-section:hover {
+		transform: translateY(-8px);
+		box-shadow: 0 32px 80px rgba(15, 23, 42, 0.1);
 	}
 	.hero-panel {
-		margin-top: 40px;
+		margin-top: 48px;
 		border: 0;
+		box-shadow: none;
+		background: transparent;
+	}
+	.hero-panel:hover {
+		transform: none;
 		box-shadow: none;
 	}
 	.first-section {
-		margin-top: 40px;
+		margin-top: 48px;
 		background:
-			linear-gradient(135deg, rgb(255 255 255 / 0.98), rgb(248 250 252 / 0.98)),
-			radial-gradient(circle at 92% 18%, rgb(14 165 233 / 0.12), transparent 30%);
+			linear-gradient(135deg, rgba(255, 255, 255, 0.98) 0%, rgba(248, 250, 252, 0.98) 100%),
+			radial-gradient(circle at 90% 10%, rgba(14, 165, 233, 0.12) 0%, transparent 40%);
 	}
 	.second-section {
-		margin-top: 40px;
+		margin-top: 48px;
 		background:
-			linear-gradient(135deg, rgb(239 246 255 / 0.96), rgb(255 255 255 / 0.98)),
-			radial-gradient(circle at 15% 85%, rgb(16 185 129 / 0.1), transparent 28%);
+			linear-gradient(135deg, rgba(239, 246, 255, 0.96) 0%, rgba(255, 255, 255, 0.98) 100%),
+			radial-gradient(circle at 10% 90%, rgba(16, 185, 129, 0.1) 0%, transparent 40%);
 	}
 	.final-section {
-		margin-top: 40px;
+		margin-top: 48px;
 		margin-bottom: 0;
-		background: linear-gradient(135deg, #0f172a, #1d4ed8 70%, #0369a1);
+		background: linear-gradient(135deg, #0f172a 0%, #1d4ed8 50%, #0369a1 100%);
+		position: relative;
+		overflow: hidden;
+	}
+	.final-section::before {
+		content: '';
+		position: absolute;
+		top: 0;
+		left: 0;
+		right: 0;
+		bottom: 0;
+		background: radial-gradient(circle at 50% 50%, rgba(255, 255, 255, 0.08) 0%, transparent 70%);
+		pointer-events: none;
 	}
 	.eyebrow {
 		display: inline-flex;
 		width: fit-content;
 		border-radius: 999px;
-		border: 1px solid rgb(37 99 235 / 0.16);
-		background: rgb(37 99 235 / 0.08);
-		padding: 8px 12px;
-		font-size: 11px;
+		border: 1px solid rgba(37, 99, 235, 0.2);
+		background: linear-gradient(135deg, rgba(37, 99, 235, 0.1), rgba(37, 99, 235, 0.05));
+		padding: 10px 16px;
+		font-size: 12px;
 		font-weight: 700;
-		letter-spacing: 0;
+		letter-spacing: 0.5px;
 		text-transform: uppercase;
 		color: #2563eb;
+		backdrop-filter: blur(8px);
 	}
 	.eyebrow.dark {
-		border-color: rgb(16 185 129 / 0.18);
-		background: rgb(16 185 129 / 0.08);
+		border-color: rgba(16, 185, 129, 0.2);
+		background: linear-gradient(135deg, rgba(16, 185, 129, 0.1), rgba(16, 185, 129, 0.05));
 		color: #047857;
 	}
 	.eyebrow.final {
-		border-color: rgb(255 255 255 / 0.18);
-		background: rgb(255 255 255 / 0.1);
-		color: #dbeafe;
+		border-color: rgba(255, 255, 255, 0.3);
+		background: linear-gradient(135deg, rgba(255, 255, 255, 0.15), rgba(255, 255, 255, 0.05));
+		color: #ffffff;
 	}
 	.metric-card {
-		min-height: 270px;
-		border-radius: 8px;
-		border: 1px solid rgb(15 23 42 / 0.08);
-		background: rgb(255 255 255 / 0.86);
-		padding: 28px;
-		box-shadow: 0 16px 40px rgb(15 23 42 / 0.06);
+		min-height: 280px;
+		border-radius: 16px;
+		border: 1px solid rgba(15, 23, 42, 0.1);
+		background: rgba(255, 255, 255, 0.95);
+		padding: 32px;
+		box-shadow: 0 20px 50px rgba(15, 23, 42, 0.05);
+		transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+		backdrop-filter: blur(10px);
+	}
+	.metric-card:hover {
+		transform: translateY(-8px);
+		box-shadow: 0 30px 60px rgba(15, 23, 42, 0.1);
+		border-color: rgba(37, 99, 235, 0.2);
 	}
 	.metric-index {
 		display: flex;
-		height: 44px;
-		width: 44px;
+		height: 52px;
+		width: 52px;
 		align-items: center;
 		justify-content: center;
-		border-radius: 8px;
-		background: #eff6ff;
+		border-radius: 12px;
+		background: linear-gradient(135deg, #eff6ff, #dbeafe);
 		color: #2563eb;
-		font-size: 14px;
+		font-size: 18px;
 		font-weight: 800;
+		box-shadow: 0 4px 12px rgba(37, 99, 235, 0.15);
 	}
 	.workflow-panel {
-		border: 1px solid rgb(15 23 42 / 0.08);
-		border-radius: 14px;
-		background: rgb(255 255 255 / 0.86);
-		padding: 8px;
-		box-shadow: 0 18px 50px rgb(15 23 42 / 0.08);
+		border: 1px solid rgba(15, 23, 42, 0.1);
+		border-radius: 20px;
+		background: rgba(255, 255, 255, 0.95);
+		padding: 12px;
+		box-shadow: 0 24px 60px rgba(15, 23, 42, 0.06);
+		backdrop-filter: blur(10px);
 	}
 	.workflow-row {
 		display: grid;
-		grid-template-columns: 72px 1fr;
-		gap: 20px;
-		border-bottom: 1px solid rgb(15 23 42 / 0.08);
-		padding: 26px;
+		grid-template-columns: 80px 1fr;
+		gap: 24px;
+		border-bottom: 1px solid rgba(15, 23, 42, 0.08);
+		padding: 28px;
+		transition: all 0.2s ease;
+	}
+	.workflow-row:hover {
+		background-color: rgba(239, 246, 255, 0.3);
+		border-radius: 12px;
 	}
 	.workflow-row:last-child {
 		border-bottom: 0;
 	}
 	.workflow-step {
 		display: flex;
-		height: 48px;
-		width: 48px;
+		height: 56px;
+		width: 56px;
 		align-items: center;
 		justify-content: center;
-		border-radius: 8px;
-		background: #ecfdf5;
+		border-radius: 12px;
+		background: linear-gradient(135deg, #ecfdf5, #d1fae5);
 		color: #047857;
-		font-size: 15px;
+		font-size: 18px;
 		font-weight: 800;
+		box-shadow: 0 4px 12px rgba(16, 185, 129, 0.15);
 	}
 
 	@media (max-width: 768px) {
 		.home-page {
-			padding-bottom: 40px;
+			padding-bottom: 48px;
 		}
 		.page-section {
-			margin-right: 16px;
-			margin-bottom: 28px;
-			margin-left: 16px;
-			border-radius: 24px;
+			margin-right: 20px;
+			margin-bottom: 32px;
+			margin-left: 20px;
+			border-radius: 28px;
 		}
 		.metric-card {
 			min-height: auto;
+			padding: 24px;
 		}
 		.workflow-row {
 			grid-template-columns: 1fr;
-			gap: 14px;
-			padding: 22px;
+			gap: 16px;
+			padding: 24px;
+		}
+		.workflow-step {
+			height: 48px;
+			width: 48px;
+			font-size: 16px;
 		}
 	}
 </style>
