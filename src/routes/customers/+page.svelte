@@ -1,6 +1,11 @@
 <script lang="ts">
+	import { onMount } from 'svelte';
+	import { listCustomers } from '$lib/api/clients.js';
+	import { createRiskFlag, deleteRiskFlag, listRiskFlags } from '$lib/api/risk-flags.js';
+	import { ApiError } from '$lib/utils/api-errors.js';
 	type Customer = {
 		id: string;
+		customerId: number;
 		name: string;
 		phone: string;
 		kyc: string;
@@ -9,48 +14,24 @@
 		flagReason: string;
 	};
 
-	let customers = $state<Customer[]>([
-		{
-			id: 'CL-001',
-			name: 'Jean K.',
-			phone: '+243 810 000 001',
-			kyc: 'Verifie',
-			transactions: 18,
-			flagged: false,
-			flagReason: ''
-		},
-		{
-			id: 'CL-002',
-			name: 'Marie M.',
-			phone: '+243 820 000 002',
-			kyc: 'A completer',
-			transactions: 7,
-			flagged: true,
-			flagReason: 'KYC incomplet'
-		},
-		{
-			id: 'CL-003',
-			name: 'Patrick N.',
-			phone: '+243 990 000 003',
-			kyc: 'Verifie',
-			transactions: 12,
-			flagged: false,
-			flagReason: ''
-		},
-		{
-			id: 'CL-004',
-			name: 'Aline B.',
-			phone: '+243 850 000 004',
-			kyc: 'En revue',
-			transactions: 4,
-			flagged: true,
-			flagReason: 'Transaction a verifier'
-		}
-	]);
+	let customers = $state<Customer[]>([]);
+	let loading = $state(true);
+	let loadError = $state('');
+	onMount(async () => {
+		try {
+			const page = await listCustomers();
+			customers = page.items.map(c => ({ id: `CL-${c.id}`, customerId: c.id, name: c.full_name, phone: c.phone,
+				kyc: c.kyc_status, transactions: c.transaction_count, flagged: c.open_risk_flags > 0,
+				flagReason: c.latest_flag_reason ?? '' }));
+		} catch (error) { loadError = error instanceof ApiError ? error.message : 'Impossible de charger les clients.'; }
+		finally { loading = false; }
+	});
 
 	let isFlagModalOpen = $state(false);
 	let selectedCustomerId = $state('');
 	let flagReason = $state('KYC incomplet');
+	let actionError = $state('');
+	let savingFlag = $state(false);
 
 	const flagReasons = [
 		'KYC incomplet',
@@ -59,6 +40,9 @@
 		'Document suspect',
 		'Client sous observation'
 	];
+	function kycLabel(status: string) {
+		return ({ VERIFIED: 'Vérifié', UNVERIFIED: 'Non vérifié', PARTIALLY_VERIFIED: 'Partiel', ENHANCED_VERIFICATION: 'Vérification renforcée' } as Record<string, string>)[status] ?? status;
+	}
 
 	function getSelectedCustomer() {
 		return customers.find((customer) => customer.id === selectedCustomerId);
@@ -75,20 +59,30 @@
 		selectedCustomerId = '';
 	}
 
-	function saveFlag() {
+	async function saveFlag() {
 		const customer = getSelectedCustomer();
 
 		if (customer) {
-			customer.flagged = true;
-			customer.flagReason = flagReason;
+			savingFlag = true;
+			actionError = '';
+			try {
+				await createRiskFlag(customer.customerId, flagReason);
+				customer.flagged = true;
+				customer.flagReason = flagReason;
+				closeFlagModal();
+			} catch (error) { actionError = error instanceof ApiError ? error.message : 'Impossible de créer l’alerte.'; }
+			finally { savingFlag = false; }
 		}
-
-		closeFlagModal();
 	}
 
-	function removeFlag(customer: Customer) {
-		customer.flagged = false;
-		customer.flagReason = '';
+	async function removeFlag(customer: Customer) {
+		actionError = '';
+		try {
+			const flags = (await listRiskFlags()).items.filter(flag => flag.customer_id === customer.customerId && ['OPEN', 'IN_REVIEW'].includes(flag.status));
+			for (const flag of flags) await deleteRiskFlag(flag.id);
+			customer.flagged = false;
+			customer.flagReason = '';
+		} catch (error) { actionError = error instanceof ApiError ? error.message : 'Impossible de retirer la surveillance.'; }
 	}
 </script>
 
@@ -102,6 +96,7 @@
 	</div>
 
 	<div class="app-table-wrap">
+		{#if actionError}<p class="px-4 py-3 text-sm text-red-700">{actionError}</p>{/if}
 		<div class="overflow-x-auto">
 			<table class="app-table min-w-[760px]">
 				<thead>
@@ -116,6 +111,9 @@
 					</tr>
 				</thead>
 				<tbody>
+					{#if loading}<tr><td colspan="7">Chargement des clients…</td></tr>{/if}
+					{#if loadError}<tr><td colspan="7" class="text-red-700">{loadError}</td></tr>{/if}
+					{#if !loading && !loadError && customers.length === 0}<tr><td colspan="7">Aucun client.</td></tr>{/if}
 					{#each customers as customer}
 						<tr class={customer.flagged ? 'bg-red-50/40' : ''}>
 							<td class="font-semibold text-slate-950">{customer.id}</td>
@@ -127,7 +125,7 @@
 							</td>
 							<td>{customer.phone}</td>
 							<td>
-								<span class="font-semibold text-slate-950">{customer.kyc}</span>
+								<span class="font-semibold text-slate-950">{kycLabel(customer.kyc)}</span>
 							</td>
 							<td class="font-semibold text-slate-950">{customer.transactions}</td>
 							<td>
@@ -194,6 +192,7 @@
 			</div>
 
 			<div class="px-6 py-5">
+				{#if actionError}<p class="mb-4 text-sm text-red-700">{actionError}</p>{/if}
 				<label for="flagReason" class="mb-2 block text-sm font-semibold text-slate-700">
 					Motif
 				</label>
@@ -210,9 +209,10 @@
 				</button>
 				<button
 					class="app-button app-button-danger bg-red-600 px-4 py-2 text-white"
+					disabled={savingFlag}
 					onclick={saveFlag}
 				>
-					Confirmer
+					{savingFlag ? 'Enregistrement…' : 'Confirmer'}
 				</button>
 			</div>
 		</div>

@@ -1,4 +1,10 @@
 <script lang="ts">
+	import { onMount } from 'svelte';
+	import {
+		getSavedAnalysis,
+		listConfiguredAnalyses,
+		type ExchangeAnalysis
+	} from '$lib/api/analyses.js';
 	import {
 		createTransactionWithExistingClient,
 		createTransactionWithNewClient
@@ -47,6 +53,57 @@
 	let formError = $state('');
 	let isSubmitting = $state(false);
 	let successMessage = $state('');
+	let configuredRates = $state<ExchangeAnalysis[]>([]);
+
+	onMount(() => {
+		void loadConfiguredRates();
+	});
+
+	async function loadConfiguredRates(): Promise<boolean> {
+		configuredRates = ['USD/CDF', 'EUR/CDF', 'GBP/CDF'].flatMap((pair) => {
+			const saved = getSavedAnalysis(pair);
+			const buyRate = Number(saved?.buy_rate);
+			const sellRate = Number(saved?.sell_rate);
+			const changeRate = Number(saved?.change_rate);
+			if (!Number.isFinite(buyRate) || buyRate <= 0 || !Number.isFinite(sellRate) || sellRate <= 0) {
+				return [];
+			}
+			return [
+				{
+					pair,
+					buy_rate: buyRate,
+					sell_rate: sellRate,
+					change_rate: Number.isFinite(changeRate) ? changeRate : 0
+				}
+			];
+		});
+		updateRateFromConfiguration();
+
+		try {
+			const apiRates = await listConfiguredAnalyses();
+			configuredRates = apiRates.length ? apiRates : configuredRates;
+			updateRateFromConfiguration();
+		} catch {
+			// A saved browser value is still usable when the API cannot be reached.
+		}
+		return Number.isFinite(Number(form.rate)) && Number(form.rate) > 0;
+	}
+
+	function updateRateFromConfiguration(currency = form.currency, type = form.type) {
+		const configured = configuredRates.find((rate) => rate.pair === `${currency}/CDF`);
+		if (!configured) return;
+		form.rate = String(type === 'Achat' ? configured.buy_rate : configured.sell_rate);
+	}
+
+	function changeCurrency(currency: TransactionFormData['currency']) {
+		form.currency = currency;
+		updateRateFromConfiguration(currency, form.type);
+	}
+
+	function changeTransactionType(type: TransactionFormData['type']) {
+		form.type = type;
+		updateRateFromConfiguration(form.currency, type);
+	}
 
 	const inputClass = (field: string) =>
 		`app-input ${fieldErrors[field] ? 'border-red-300 bg-red-50' : ''}`;
@@ -55,6 +112,7 @@
 		scenario = null;
 		currentStep = 'scenario';
 		form = createEmptyTransactionForm();
+		updateRateFromConfiguration();
 		lookupState = createIdleLookupState();
 		foundClient = null;
 		fieldErrors = {};
@@ -126,11 +184,15 @@
 		return !hasErrors(fieldErrors);
 	}
 
-	function continueToNextStep() {
+	async function continueToNextStep() {
 		formError = '';
 
 		if (currentStep === 'client' && validateClientStep()) {
+			const rateAvailable = await loadConfiguredRates();
 			currentStep = 'transaction';
+			if (!rateAvailable) {
+				formError = 'Aucun taux configuré pour cette devise. Saisissez un taux ou configurez-le dans Paramètres.';
+			}
 			return;
 		}
 
@@ -291,6 +353,27 @@
 					class="mb-4 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700"
 				>
 					{successMessage}
+				</div>
+			{/if}
+
+			{#if currentStep !== 'scenario'}
+				<div class="mb-4 rounded-lg border border-blue-100 bg-blue-50/50 p-4">
+					<label for="rate" class="mb-2 block text-sm font-semibold text-slate-700">
+						Taux de change (CDF pour 1 {form.currency})
+					</label>
+					<input
+						id="rate"
+						type="number"
+						min="0"
+						step="0.01"
+						class={inputClass('rate')}
+						placeholder="Ex: 2780"
+						inputmode="decimal"
+						bind:value={form.rate}
+					/>
+					{#if fieldErrors.rate}
+						<p class="mt-1 text-sm text-red-600">{fieldErrors.rate}</p>
+					{/if}
 				</div>
 			{/if}
 
@@ -584,7 +667,13 @@
 
 					<div>
 						<label for="type" class="mb-2 block text-sm font-semibold text-slate-700">Type</label>
-						<select id="type" class={inputClass('type')} bind:value={form.type}>
+		<select
+			id="type"
+			class={inputClass('type')}
+			value={form.type}
+			onchange={(event) =>
+				changeTransactionType(event.currentTarget.value as TransactionFormData['type'])}
+		>
 							<option value="Achat">Achat</option>
 							<option value="Vente">Vente</option>
 						</select>
@@ -594,7 +683,12 @@
 						<label for="currency" class="mb-2 block text-sm font-semibold text-slate-700"
 							>Devise</label
 						>
-						<select id="currency" class={inputClass('currency')} bind:value={form.currency}>
+		<select
+			id="currency"
+			class={inputClass('currency')}
+			value={form.currency}
+			onchange={(event) => changeCurrency(event.currentTarget.value as TransactionFormData['currency'])}
+		>
 							<option value="USD">USD</option>
 							<option value="EUR">EUR</option>
 							<option value="GBP">GBP</option>
@@ -617,23 +711,6 @@
 						/>
 						{#if fieldErrors.amount}
 							<p class="mt-1 text-sm text-red-600">{fieldErrors.amount}</p>
-						{/if}
-					</div>
-
-					<div>
-						<label for="rate" class="mb-2 block text-sm font-semibold text-slate-700">Taux</label>
-						<input
-							id="rate"
-							type="number"
-							min="0"
-							step="0.01"
-							class={inputClass('rate')}
-							placeholder="Ex: 2780"
-							inputmode="decimal"
-							bind:value={form.rate}
-						/>
-						{#if fieldErrors.rate}
-							<p class="mt-1 text-sm text-red-600">{fieldErrors.rate}</p>
 						{/if}
 					</div>
 

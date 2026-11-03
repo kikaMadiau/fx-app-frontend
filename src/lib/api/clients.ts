@@ -3,6 +3,19 @@ import type { Client } from '$lib/types/client.js';
 import { normalizePhone } from '$lib/utils/phone.js';
 import { ApiError } from '$lib/utils/api-errors.js';
 
+export type CustomerSummary = Client & {
+	kyc_status: string;
+	transaction_count: number;
+	open_risk_flags: number;
+	latest_flag_reason?: string;
+};
+
+export type CustomerPage = { items: CustomerSummary[]; total: number; limit: number; offset: number };
+
+export function listCustomers() {
+	return apiRequest<CustomerPage>('/customers?limit=100');
+}
+
 export async function searchClientByPhone(phone: string): Promise<Client> {
 	const normalizedPhone = normalizePhone(phone);
 

@@ -1,63 +1,16 @@
 <script lang="ts">
-	const alerts = [
-		{
-			id: 'AL-001',
-			level: 'Critique',
-			title: 'Transaction inhabituelle',
-			description: 'Montant superieur au profil habituel du client.',
-			client: {
-				name: 'Marie M.',
-				phone: '+243 820 000 002',
-				kyc: 'A completer'
-			},
-			transaction: {
-				id: 'TX-002',
-				type: 'Vente EUR',
-				amount: 'EUR 8,200',
-				rate: '3,020 CDF',
-				date: '25 aout 2026'
-			}
-		},
-		{
-			id: 'AL-002',
-			level: 'Moyen',
-			title: 'KYC incomplet',
-			description: 'Piece identite manquante dans le dossier client.',
-			client: {
-				name: 'Aline B.',
-				phone: '+243 850 000 004',
-				kyc: 'En revue'
-			},
-			transaction: {
-				id: 'TX-004',
-				type: 'Vente GBP',
-				amount: 'GBP 3,600',
-				rate: '3,510 CDF',
-				date: '24 aout 2026'
-			}
-		},
-		{
-			id: 'AL-003',
-			level: 'Moyen',
-			title: 'Operations rapprochees',
-			description: 'Plusieurs transactions detectees sur une courte periode.',
-			client: {
-				name: 'Patrick N.',
-				phone: '+243 990 000 003',
-				kyc: 'Verifie'
-			},
-			transaction: {
-				id: 'TX-003',
-				type: 'Achat USD',
-				amount: '$1,180',
-				rate: '2,775 CDF',
-				date: '24 aout 2026'
-			}
-		}
-	];
+	import { onMount } from 'svelte';
+	import { listRiskFlags, type RiskFlag } from '$lib/api/risk-flags.js';
+	import { ApiError } from '$lib/utils/api-errors.js';
+	let alerts = $state<RiskFlag[]>([]);
+	let loadError = $state('');
+	onMount(async () => {
+		try { alerts = (await listRiskFlags()).items.filter(flag => ['OPEN', 'IN_REVIEW'].includes(flag.status)); }
+		catch (error) { loadError = error instanceof ApiError ? error.message : 'Impossible de charger les alertes.'; }
+	});
 
 	function levelClass(level: string) {
-		if (level === 'Critique') {
+		if (level === 'CRITICAL' || level === 'HIGH') {
 			return 'app-badge-danger';
 		}
 
@@ -66,14 +19,15 @@
 
 	let openedAlerts = $state<string[]>([]);
 
-	function isOpen(id: string) {
-		return openedAlerts.includes(id);
+	function isOpen(id: number) {
+		return openedAlerts.includes(String(id));
 	}
 
-	function toggleAlert(id: string) {
+	function toggleAlert(id: number) {
+		const key = String(id);
 		openedAlerts = isOpen(id)
-			? openedAlerts.filter((openedAlert) => openedAlert !== id)
-			: [...openedAlerts, id];
+			? openedAlerts.filter((openedAlert) => openedAlert !== key)
+			: [...openedAlerts, key];
 	}
 </script>
 
@@ -87,6 +41,8 @@
 	</div>
 
 	<div class="space-y-5">
+		{#if loadError}<p class="text-sm text-red-700">{loadError}</p>{/if}
+		{#if !loadError && alerts.length === 0}<p class="text-sm text-slate-500">Aucune alerte ouverte.</p>{/if}
 		{#each alerts as alert}
 			<article class="app-card p-5">
 				<div
@@ -96,10 +52,10 @@
 				>
 					<div>
 						<div class="flex flex-wrap items-center gap-3">
-							<h2 class="font-semibold text-slate-950">{alert.title}</h2>
+							<h2 class="font-semibold text-slate-950">{alert.flag}</h2>
 							<span class={`app-badge ${levelClass(alert.level)}`}>{alert.level}</span>
 						</div>
-						<p class="mt-2 text-sm text-slate-500">{alert.description}</p>
+						<p class="mt-2 text-sm text-slate-500">{alert.reason || 'Aucun détail supplémentaire.'}</p>
 					</div>
 
 					<button
@@ -116,38 +72,38 @@
 					<div id={`${alert.id}-details`} class="mt-5 grid gap-5 lg:grid-cols-2">
 						<div class="rounded-lg bg-slate-50 p-4">
 							<p class="text-xs font-semibold text-slate-400 uppercase">Client concerne</p>
-							<h3 class="mt-3 font-semibold text-slate-950">{alert.client.name}</h3>
+							<h3 class="mt-3 font-semibold text-slate-950">{alert.customer?.full_name ?? `Client #${alert.customer_id}`}</h3>
 							<div class="mt-3 grid gap-2 text-sm">
 								<div class="flex justify-between gap-4">
 									<span class="text-slate-500">Telephone</span>
-									<span class="font-semibold text-slate-950">{alert.client.phone}</span>
+									<span class="font-semibold text-slate-950">{alert.customer?.phone ?? '—'}</span>
 								</div>
 								<div class="flex justify-between gap-4">
 									<span class="text-slate-500">KYC</span>
-									<span class="font-semibold text-slate-950">{alert.client.kyc}</span>
+									<span class="font-semibold text-slate-950">{alert.customer?.kyc_status ?? '—'}</span>
 								</div>
 							</div>
 						</div>
 
 						<div class="rounded-lg bg-slate-50 p-4">
 							<p class="text-xs font-semibold text-slate-400 uppercase">Transaction concernee</p>
-							<h3 class="mt-3 font-semibold text-slate-950">{alert.transaction.id}</h3>
+							<h3 class="mt-3 font-semibold text-slate-950">{alert.transaction?.id ? `TX-${alert.transaction.id}` : 'Aucune transaction liée'}</h3>
 							<div class="mt-3 grid gap-2 text-sm">
 								<div class="flex justify-between gap-4">
 									<span class="text-slate-500">Operation</span>
-									<span class="font-semibold text-slate-950">{alert.transaction.type}</span>
+									<span class="font-semibold text-slate-950">{alert.transaction?.type ?? '—'}</span>
 								</div>
 								<div class="flex justify-between gap-4">
 									<span class="text-slate-500">Montant</span>
-									<span class="font-semibold text-slate-950">{alert.transaction.amount}</span>
+									<span class="font-semibold text-slate-950">{alert.transaction ? `${alert.transaction.amount} ${alert.transaction.currency}` : '—'}</span>
 								</div>
 								<div class="flex justify-between gap-4">
 									<span class="text-slate-500">Taux</span>
-									<span class="font-semibold text-slate-950">{alert.transaction.rate}</span>
+									<span class="font-semibold text-slate-950">{alert.transaction?.rate ?? '—'} CDF</span>
 								</div>
 								<div class="flex justify-between gap-4">
 									<span class="text-slate-500">Date</span>
-									<span class="font-semibold text-slate-950">{alert.transaction.date}</span>
+									<span class="font-semibold text-slate-950">{alert.transaction?.created_at ? new Date(alert.transaction.created_at).toLocaleDateString('fr-FR') : new Date(alert.created_at).toLocaleDateString('fr-FR')}</span>
 								</div>
 							</div>
 						</div>

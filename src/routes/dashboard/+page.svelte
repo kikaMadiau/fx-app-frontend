@@ -1,16 +1,32 @@
 <script lang="ts">
-	const cards = [
-		{ label: "Transactions aujourd'hui", value: '128', detail: '+12 depuis hier' },
-		{ label: 'Volume total', value: '$48,200', detail: 'Operations du jour' },
-		{ label: 'Clients actifs', value: '342', detail: '24 nouveaux ce mois' },
-		{ label: 'Alertes ouvertes', value: '7', detail: '3 urgentes' }
-	];
-
-	const recentTransactions = [
-		{ client: 'Jean K.', operation: 'Achat USD', amount: '$2,450', status: 'Validee' },
-		{ client: 'Marie M.', operation: 'Vente EUR', amount: 'EUR 8,200', status: 'A verifier' },
-		{ client: 'Patrick N.', operation: 'Achat USD', amount: '$1,180', status: 'En cours' }
-	];
+	import { onMount } from 'svelte';
+	import { getDashboardSummary, type DashboardSummary } from '$lib/api/dashboard.js';
+	import { listTransactions, type TransactionListItem } from '$lib/api/transactions.js';
+	import { listConfiguredAnalyses } from '$lib/api/analyses.js';
+	import { ApiError } from '$lib/utils/api-errors.js';
+	let summary = $state<DashboardSummary | null>(null);
+	let recentTransactions = $state<TransactionListItem[]>([]);
+	let exchangeRates = $state<Record<string, { buy_rate: number; sell_rate: number }>>({});
+	let error = $state('');
+	onMount(async () => {
+		try {
+			const results = await Promise.allSettled([getDashboardSummary(), listTransactions(3), listConfiguredAnalyses()]);
+			if (results[0].status === 'fulfilled') summary = results[0].value;
+			if (results[1].status === 'fulfilled') recentTransactions = results[1].value;
+			if (results[2].status === 'fulfilled') exchangeRates = Object.fromEntries(results[2].value.map(r => [r.pair.split('/')[0], r]));
+			if (results.every(r => r.status === 'rejected')) throw results[0].status === 'rejected' ? results[0].reason : new Error();
+		}
+		catch (e) { error = e instanceof ApiError ? e.message : 'Impossible de charger le tableau de bord.'; }
+	});
+	const number = (value: number) => new Intl.NumberFormat('fr-FR').format(value);
+	const transactionStatus = (value: string) => ({ COMPLETED: 'Terminée', PENDING: 'En cours', CANCELLED: 'Annulée' } as Record<string, string>)[value] ?? value;
+	const volume = (data: DashboardSummary | null) => data?.volume_today.map(v => `${number(v.amount)} ${v.currency}`).join(' · ') || '0';
+	const cards = $derived(summary ? [
+		{ label: "Transactions aujourd'hui", value: number(summary.transactions_today), detail: `${number(summary.transactions_yesterday)} hier` },
+		{ label: 'Volume total', value: volume(summary), detail: 'Opérations du jour' },
+		{ label: 'Clients actifs', value: number(summary.active_customers), detail: `${number(summary.new_customers_this_month)} nouveaux ce mois` },
+		{ label: 'Alertes ouvertes', value: number(summary.open_alerts), detail: `${number(summary.urgent_alerts)} urgentes` }
+	] : []);
 </script>
 
 <section class="app-shell">
@@ -23,6 +39,8 @@
 	</div>
 
 	<div class="grid gap-5 md:grid-cols-2 xl:grid-cols-4">
+		{#if error}<p class="text-sm text-red-700 md:col-span-2 xl:col-span-4">{error}</p>{/if}
+		{#if !summary && !error}<p class="text-sm text-slate-500 md:col-span-2 xl:col-span-4">Chargement…</p>{/if}
 		{#each cards as card (card.label)}
 			<div class="app-stat-card">
 				<p class="app-stat-label">{card.label}</p>
@@ -50,12 +68,12 @@
 						</tr>
 					</thead>
 					<tbody>
-						{#each recentTransactions as transaction (transaction.client)}
+						{#each recentTransactions as transaction (transaction.id)}
 							<tr>
-								<td class="font-semibold text-slate-950">{transaction.client}</td>
-								<td>{transaction.operation}</td>
-								<td class="font-semibold text-slate-950">{transaction.amount}</td>
-								<td>{transaction.status}</td>
+								<td class="font-semibold text-slate-950">{transaction.customer_name}</td>
+								<td>{transaction.type === 'BUY' ? 'Achat' : 'Vente'} {transaction.currency}</td>
+								<td class="font-semibold text-slate-950">{number(transaction.amount)} {transaction.currency}</td>
+								<td>{transactionStatus(transaction.status)}</td>
 							</tr>
 						{/each}
 					</tbody>
@@ -71,11 +89,11 @@
 					<div class="flex justify-between gap-4">
 						<div class="flex-1">
 							<p class="text-xs text-slate-500">Achat</p>
-							<p class="mt-1 font-semibold text-slate-950">2,775</p>
+							<p class="mt-1 font-semibold text-slate-950">{exchangeRates.USD ? number(exchangeRates.USD.buy_rate) : '—'}</p>
 						</div>
 						<div class="flex-1">
 							<p class="text-xs text-slate-500">Vente</p>
-							<p class="mt-1 font-semibold text-slate-950">2,785</p>
+							<p class="mt-1 font-semibold text-slate-950">{exchangeRates.USD ? number(exchangeRates.USD.sell_rate) : '—'}</p>
 						</div>
 					</div>
 				</div>
@@ -84,11 +102,11 @@
 					<div class="flex justify-between gap-4">
 						<div class="flex-1">
 							<p class="text-xs text-slate-500">Achat</p>
-							<p class="mt-1 font-semibold text-slate-950">3,015</p>
+							<p class="mt-1 font-semibold text-slate-950">{exchangeRates.EUR ? number(exchangeRates.EUR.buy_rate) : '—'}</p>
 						</div>
 						<div class="flex-1">
 							<p class="text-xs text-slate-500">Vente</p>
-							<p class="mt-1 font-semibold text-slate-950">3,025</p>
+							<p class="mt-1 font-semibold text-slate-950">{exchangeRates.EUR ? number(exchangeRates.EUR.sell_rate) : '—'}</p>
 						</div>
 					</div>
 				</div>
@@ -97,11 +115,11 @@
 					<div class="flex justify-between gap-4">
 						<div class="flex-1">
 							<p class="text-xs text-slate-500">Achat</p>
-							<p class="mt-1 font-semibold text-slate-950">3,505</p>
+							<p class="mt-1 font-semibold text-slate-950">{exchangeRates.GBP ? number(exchangeRates.GBP.buy_rate) : '—'}</p>
 						</div>
 						<div class="flex-1">
 							<p class="text-xs text-slate-500">Vente</p>
-							<p class="mt-1 font-semibold text-slate-950">3,515</p>
+							<p class="mt-1 font-semibold text-slate-950">{exchangeRates.GBP ? number(exchangeRates.GBP.sell_rate) : '—'}</p>
 						</div>
 					</div>
 				</div>

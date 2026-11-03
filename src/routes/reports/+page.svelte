@@ -2,10 +2,28 @@
 	import { resolve } from '$app/paths';
 
 	const reports = [
-		{ title: 'Rapport journalier', date: '25 août 2026', status: 'Pret', type: 'PDF', size: '2.4 MB' },
-		{ title: 'Synthèse mensuelle', date: 'Août 2026', status: 'En cours', type: 'Excel', size: '1.8 MB' },
+		{
+			title: 'Rapport journalier',
+			date: '25 août 2026',
+			status: 'Pret',
+			type: 'PDF',
+			size: '2.4 MB'
+		},
+		{
+			title: 'Synthèse mensuelle',
+			date: 'Août 2026',
+			status: 'En cours',
+			type: 'Excel',
+			size: '1.8 MB'
+		},
 		{ title: 'Rapport KYC', date: 'Août 2026', status: 'Pret', type: 'PDF', size: '3.1 MB' },
-		{ title: 'Rapport annuel 2025', date: 'Décembre 2025', status: 'Pret', type: 'PDF', size: '5.6 MB' }
+		{
+			title: 'Rapport annuel 2025',
+			date: 'Décembre 2025',
+			status: 'Pret',
+			type: 'PDF',
+			size: '5.6 MB'
+		}
 	];
 
 	const downloadReport = (title: string) => {
@@ -49,12 +67,17 @@
 						<p class="mt-1 text-sm text-slate-500">{report.date}</p>
 					</div>
 					<button
-						on:click={() => downloadReport(report.title)}
+						onclick={() => downloadReport(report.title)}
 						class="rounded-lg p-2 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600"
 						title="Télécharger"
 					>
 						<svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+							<path
+								stroke-linecap="round"
+								stroke-linejoin="round"
+								stroke-width="2"
+								d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
+							/>
 						</svg>
 					</button>
 				</div>
@@ -62,20 +85,23 @@
 				<div class="mt-5 flex items-center justify-between">
 					<span
 						class={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold ${
-							report.status === 'Pret'
-								? 'bg-green-100 text-green-700'
-								: 'bg-blue-100 text-blue-700'
+							report.status === 'Pret' ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700'
 						}`}
 					>
 						{#if report.status === 'Pret'}
 							<svg class="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+								<path
+									stroke-linecap="round"
+									stroke-linejoin="round"
+									stroke-width="2"
+									d="M5 13l4 4L19 7"
+								/>
 							</svg>
 						{/if}
 						{report.status}
 					</span>
 					<button
-						on:click={() => downloadReport(report.title)}
+						onclick={() => downloadReport(report.title)}
 						class="text-sm font-medium text-blue-600 hover:text-blue-700"
 					>
 						Télécharger →
@@ -90,8 +116,8 @@
 			<h3 class="text-lg font-semibold text-slate-950">Filtres</h3>
 			<div class="mt-4 space-y-4">
 				<div>
-					<label class="text-sm font-medium text-slate-700">Période</label>
-					<select class="app-input mt-1">
+					<label for="report-period" class="text-sm font-medium text-slate-700">Période</label>
+					<select id="report-period" class="app-input mt-1">
 						<option>Tout sélectionner</option>
 						<option>Ce mois</option>
 						<option>Ce trimestre</option>
@@ -99,16 +125,18 @@
 					</select>
 				</div>
 				<div>
-					<label class="text-sm font-medium text-slate-700">Type de document</label>
-					<select class="app-input mt-1">
+					<label for="report-type" class="text-sm font-medium text-slate-700"
+						>Type de document</label
+					>
+					<select id="report-type" class="app-input mt-1">
 						<option>Tout sélectionner</option>
 						<option>Rapports PDF</option>
 						<option>Rapports Excel</option>
 					</select>
 				</div>
 				<div>
-					<label class="text-sm font-medium text-slate-700">Statut</label>
-					<select class="app-input mt-1">
+					<label for="report-status" class="text-sm font-medium text-slate-700">Statut</label>
+					<select id="report-status" class="app-input mt-1">
 						<option>Tout sélectionner</option>
 						<option>Prêt</option>
 						<option>En cours</option>

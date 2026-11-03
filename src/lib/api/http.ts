@@ -14,7 +14,7 @@ function getApiBaseUrl(): string {
 	const baseUrl = env.PUBLIC_API_BASE_URL?.trim();
 
 	if (!baseUrl) {
-		return 'http://localhost:8000/api';
+		return 'http://localhost:3000';
 	}
 
 	return baseUrl.replace(/\/$/, '');

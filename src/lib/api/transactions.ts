@@ -14,6 +14,18 @@ import {
 } from '$lib/types/transaction.js';
 import { normalizePhone } from '$lib/utils/phone.js';
 
+export type TransactionListItem = TransactionApiResponse & {
+	customer_name: string;
+	customer_phone?: string;
+	customer_id_type: string;
+	customer_id_number: string;
+};
+
+export async function listTransactions(limit = 100): Promise<TransactionListItem[]> {
+	const page = await apiRequest<{ items: TransactionListItem[] }>('/transactions?limit=' + limit);
+	return page.items ?? [];
+}
+
 function getCurrentTraderId(): number {
 	const current = get(session);
 	if (!current?.trader?.id) {

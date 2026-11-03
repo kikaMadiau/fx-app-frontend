@@ -1,9 +1,18 @@
 <script lang="ts">
-	const rates = [
-		{ pair: 'USD/CDF', buy: '2,770', sell: '2,795', change: '+0.6%', trend: 'up' },
-		{ pair: 'EUR/CDF', buy: '3,000', sell: '3,035', change: '+0.3%', trend: 'up' },
-		{ pair: 'GBP/CDF', buy: '3,480', sell: '3,525', change: '-0.2%', trend: 'down' }
-	];
+	import { onMount } from 'svelte';
+	import { listAnalyses } from '$lib/api/analyses.js';
+	import { ApiError } from '$lib/utils/api-errors.js';
+	let rates = $state<{ pair: string; buy: string; sell: string; change: string; trend: string }[]>([]);
+	let loadError = $state('');
+	onMount(async () => {
+		try {
+			rates = (await listAnalyses()).map(rate => ({ pair: rate.pair,
+				buy: new Intl.NumberFormat('fr-FR').format(rate.buy_rate),
+				sell: new Intl.NumberFormat('fr-FR').format(rate.sell_rate),
+				change: `${rate.change_rate > 0 ? '+' : ''}${rate.change_rate}%`,
+				trend: rate.change_rate >= 0 ? 'up' : 'down' }));
+		} catch (error) { loadError = error instanceof ApiError ? error.message : 'Impossible de charger les taux.'; }
+	});
 </script>
 
 <section class="app-shell">
@@ -16,6 +25,7 @@
 	</div>
 
 	<div class="grid gap-6 lg:grid-cols-3">
+		{#if loadError}<p class="text-sm text-red-700 lg:col-span-3">{loadError}</p>{/if}
 		{#each rates as rate (rate.pair)}
 			<div class="app-card p-6 transition-all hover:shadow-lg">
 				<div class="flex items-center justify-between">

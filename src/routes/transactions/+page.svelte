@@ -1,4 +1,7 @@
 <script lang="ts">
+	import { onMount } from 'svelte';
+	import { listTransactions } from '$lib/api/transactions.js';
+	import { ApiError } from '$lib/utils/api-errors.js';
 	import TransactionCreateModal from '$lib/components/transactions/TransactionCreateModal.svelte';
 	import type { CreatedTransaction } from '$lib/types/transaction.js';
 
@@ -7,64 +10,24 @@
 	let isModalOpen = $state(false);
 	let selectedTransaction = $state<Transaction | null>(null);
 
-	let transactions = $state<Transaction[]>([
-		{
-			id: 'TX-001',
-			client: 'Jean Kabamba',
-			type: 'Achat USD',
-			amount: '$2,450',
-			rate: '2,780',
-			status: 'Validee',
-			date: '24 aout 2026, 09:42',
-			amountGivenToClient: '6 811 000 CDF',
-			currencyCounterValue: '6 811 000 CDF',
-			clientPhone: '+243 810 000 001',
-			identityDocumentType: "Carte d'identite",
-			identityDocumentNumber: 'ID-243-001245'
-		},
-		{
-			id: 'TX-002',
-			client: 'Marie Mbala',
-			type: 'Vente EUR',
-			amount: 'EUR 8,200',
-			rate: '3,020',
-			status: 'A verifier',
-			date: '24 aout 2026, 11:15',
-			amountGivenToClient: 'EUR 8,200',
-			currencyCounterValue: '24 764 000 CDF',
-			clientPhone: '+243 820 000 002',
-			identityDocumentType: 'Passeport',
-			identityDocumentNumber: 'PA-1029384'
-		},
-		{
-			id: 'TX-003',
-			client: 'Patrick Ngoy',
-			type: 'Achat USD',
-			amount: '$1,180',
-			rate: '2,775',
-			status: 'En cours',
-			date: '24 aout 2026, 13:04',
-			amountGivenToClient: '3 274 500 CDF',
-			currencyCounterValue: '3 274 500 CDF',
-			clientPhone: '+243 990 000 003',
-			identityDocumentType: "Carte d'electeur",
-			identityDocumentNumber: 'CE-778899'
-		},
-		{
-			id: 'TX-004',
-			client: 'Aline Banza',
-			type: 'Vente GBP',
-			amount: 'GBP 3,600',
-			rate: '3,510',
-			status: 'Rejetee',
-			date: '24 aout 2026, 15:20',
-			amountGivenToClient: 'GBP 3,600',
-			currencyCounterValue: '12 636 000 CDF',
-			clientPhone: '+243 850 000 004',
-			identityDocumentType: 'Permis de conduire',
-			identityDocumentNumber: 'PC-445566'
-		}
-	]);
+	let transactions = $state<Transaction[]>([]);
+	let loading = $state(true);
+	let loadError = $state('');
+	const fmt = (n: number) => new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 2 }).format(n);
+	const statusLabel: Record<string, string> = { COMPLETED: 'Validee', PENDING: 'En cours', CANCELLED: 'Rejetee' };
+	onMount(async () => {
+		try {
+			const items = await listTransactions();
+			transactions = items.map(tx => ({ id: `TX-${tx.id}`, client: tx.customer_name,
+				type: `${tx.type === 'BUY' ? 'Achat' : 'Vente'} ${tx.currency}`,
+				amount: `${fmt(tx.amount)} ${tx.currency}`, rate: fmt(tx.rate), status: statusLabel[tx.status] ?? tx.status,
+				date: new Date(tx.created_at ?? '').toLocaleString('fr-FR'), riskLevel: tx.risk_level,
+				amountGivenToClient: `${fmt(tx.converted_amount ?? tx.amount * tx.rate)} ${tx.target_currency ?? 'CDF'}`,
+				currencyCounterValue: `${fmt(tx.converted_amount ?? tx.amount * tx.rate)} ${tx.target_currency ?? 'CDF'}`,
+				clientPhone: tx.customer_phone, identityDocumentType: tx.customer_id_type, identityDocumentNumber: tx.customer_id_number }));
+		} catch (error) { loadError = error instanceof ApiError ? error.message : 'Impossible de charger les transactions.'; }
+		finally { loading = false; }
+	});
 
 	function openModal() {
 		isModalOpen = true;
@@ -156,6 +119,9 @@
 				</tr>
 			</thead>
 			<tbody>
+				{#if loading}<tr><td colspan="6">Chargement…</td></tr>{/if}
+				{#if loadError}<tr><td colspan="6" class="text-red-700">{loadError}</td></tr>{/if}
+				{#if !loading && !loadError && transactions.length === 0}<tr><td colspan="6">Aucune transaction enregistrée.</td></tr>{/if}
 				{#each transactions as transaction}
 					<tr
 						class="cursor-pointer transition focus:bg-blue-50/60 focus:outline-none"

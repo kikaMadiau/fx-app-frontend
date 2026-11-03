@@ -58,7 +58,9 @@ export function validateTransactionFields(form: TransactionFormData): FormErrors
 		errors.amount = 'Entrez un montant superieur a zero.';
 	}
 
-	if (rateValue) {
+	if (!rateValue) {
+		errors.rate = 'Le taux de change est obligatoire.';
+	} else {
 		const rate = Number(rateValue);
 		if (!Number.isFinite(rate) || rate <= 0) {
 			errors.rate = 'Entrez un taux valide.';
