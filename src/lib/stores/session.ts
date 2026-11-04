@@ -45,3 +45,15 @@ export function getStoredAccessToken(): string | null {
 export function getStoredTrader(): Trader | null {
 	return readStoredSession()?.trader ?? null;
 }
+
+/** Remplace le jeton de la session en cours (ex. après un changement de mot de passe). */
+export function replaceSessionToken(accessToken: string) {
+	const current = readStoredSession();
+	if (current) setSession({ ...current, accessToken });
+}
+
+/** Met à jour les informations du cambiste connecté (ex. après modification du profil). */
+export function updateSessionTrader(trader: Trader) {
+	const current = readStoredSession();
+	if (current) setSession({ ...current, trader });
+}

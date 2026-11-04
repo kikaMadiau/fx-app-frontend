@@ -1,6 +1,7 @@
 import type { Client } from '$lib/types/client.js';
 import type { TransactionFormData } from '$lib/types/transaction.js';
 import { validatePhone } from '$lib/utils/phone.js';
+import { toApiIdType } from '$lib/utils/identity.js';
 
 export type FormErrors = Record<string, string>;
 
@@ -32,7 +33,38 @@ export function validateNewClientFields(form: TransactionFormData): FormErrors {
 		errors.identityDocumentNumber = 'Le numero de piece est obligatoire.';
 	}
 
-	return errors;
+	const emailError = validateEmail(form.email);
+	if (emailError) {
+		errors.email = emailError;
+	}
+
+	return { ...errors, ...validateIdentityExpiry(form) };
+}
+
+/** E-mail facultatif du client : vide accepté, sinon une adresse valide. */
+export function validateEmail(value: string | undefined): string {
+	const email = (value ?? '').trim();
+	if (!email) return '';
+	return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ? '' : "L'adresse e-mail n'est pas valide.";
+}
+
+/** La carte d'électeur n'a pas de date d'expiration ; pour les autres pièces elle est obligatoire. */
+export function identityExpiryRequired(identityDocumentType: string): boolean {
+	const code = toApiIdType(identityDocumentType);
+	return Boolean(code) && code !== 'VOTER_CARD';
+}
+
+export function validateIdentityExpiry(form: TransactionFormData): FormErrors {
+	const expiry = form.identityDocumentExpiry.trim();
+	if (!expiry && identityExpiryRequired(form.identityDocumentType)) {
+		return {
+			identityDocumentExpiry: "La date d'expiration est obligatoire (sauf carte d'electeur)."
+		};
+	}
+	if (expiry && !/^\d{4}-\d{2}-\d{2}$/.test(expiry)) {
+		return { identityDocumentExpiry: 'Entrez une date valide.' };
+	}
+	return {};
 }
 
 export function validateExistingClientPhone(phone: string): FormErrors {
@@ -81,7 +113,7 @@ export function validateIdentityDocumentFields(form: TransactionFormData): FormE
 		errors.identityDocumentNumber = 'Le numero de piece presentee est obligatoire.';
 	}
 
-	return errors;
+	return { ...errors, ...validateIdentityExpiry(form) };
 }
 
 export function hasErrors(errors: FormErrors): boolean {

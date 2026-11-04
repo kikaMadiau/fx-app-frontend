@@ -5,6 +5,19 @@ import adapter from '@sveltejs/adapter-auto';
 import { sveltekit } from '@sveltejs/kit/vite';
 
 export default defineConfig({
+	// Développement : l'API Go est relayée sous /api, sur la même origine que l'interface.
+	// Un seul port à partager (ex. tunnel VS Code sur 5173) et pas de « localhost:8080 »
+	// qui pointerait vers le téléphone de la personne connectée.
+	server: {
+		allowedHosts: ['.devtunnels.ms'],
+		proxy: {
+			'/api': {
+				target: 'http://localhost:8080',
+				changeOrigin: true,
+				rewrite: (path) => path.replace(/^\/api/, '')
+			}
+		}
+	},
 	plugins: [
 		tailwindcss(),
 		sveltekit({

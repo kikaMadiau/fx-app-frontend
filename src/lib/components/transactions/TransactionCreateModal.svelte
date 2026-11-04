@@ -1,10 +1,4 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
-	import {
-		getSavedAnalysis,
-		listConfiguredAnalyses,
-		type ExchangeAnalysis
-	} from '$lib/api/analyses.js';
 	import {
 		createTransactionWithExistingClient,
 		createTransactionWithNewClient
@@ -21,14 +15,37 @@
 		type TransactionFormData
 	} from '$lib/types/transaction.js';
 	import { ApiError, getUserFacingErrorMessage } from '$lib/utils/api-errors.js';
+	import { fromApiIdType, toApiIdType } from '$lib/utils/identity.js';
+	import { get } from 'svelte/store';
+	import { preferences } from '$lib/stores/preferences.js';
 	import { formatPhoneDisplay } from '$lib/utils/phone.js';
+	import IdDocumentCapture from '$lib/components/customers/IdDocumentCapture.svelte';
+	import {
+		getIdDocumentImage,
+		getIdDocumentStatus,
+		translateIdDocumentError,
+		uploadIdDocument,
+		type IdDocumentSide
+	} from '$lib/api/id-document.js';
+	import { onDestroy, onMount } from 'svelte';
+	import {
+		getKycRisk,
+		isExpired as isExpiredDate,
+		previewBlocks,
+		updateIdentity,
+		type KycRisk
+	} from '$lib/api/kyc.js';
+	import { getExchangeRates, type ExchangeRate } from '$lib/api/dashboard.js';
+	import { factorSeverity, factorText } from '$lib/utils/labels.js';
 	import {
 		hasErrors,
+		identityExpiryRequired,
 		mergeErrors,
 		requireFoundClient,
 		validateExistingClientPhone,
 		validateIdentityDocumentFields,
 		validateNewClientFields,
+		validateEmail,
 		validateTransactionFields,
 		type FormErrors
 	} from '$lib/utils/validation.js';
@@ -46,63 +63,144 @@
 
 	let scenario = $state<Scenario | null>(null);
 	let currentStep = $state<Step>('scenario');
-	let form = $state<TransactionFormData>(createEmptyTransactionForm());
+	// Formulaire vide, avec la devise par défaut choisie dans Paramètres.
+	function newForm(): TransactionFormData {
+		return { ...createEmptyTransactionForm(), currency: get(preferences).currency };
+	}
+
+	let form = $state<TransactionFormData>(newForm());
 	let lookupState = $state<ClientLookupState>(createIdleLookupState());
 	let foundClient = $state<Client | null>(null);
 	let fieldErrors = $state<FormErrors>({});
 	let formError = $state('');
 	let isSubmitting = $state(false);
 	let successMessage = $state('');
-	let configuredRates = $state<ExchangeAnalysis[]>([]);
 
-	onMount(() => {
-		void loadConfiguredRates();
+	// Photos de la pièce prises pendant la saisie : envoyées après la création de la transaction
+	// (un nouveau client n'existe en base qu'à ce moment-là).
+	let idPhotos = $state<Record<IdDocumentSide, Blob | null>>({ front: null, back: null });
+	let idPreviews = $state<Record<IdDocumentSide, string | null>>({ front: null, back: null });
+	let photoWarning = $state('');
+
+	function setPreview(side: IdDocumentSide, blob: Blob | null) {
+		if (idPreviews[side]) URL.revokeObjectURL(idPreviews[side]!);
+		idPreviews[side] = blob ? URL.createObjectURL(blob) : null;
+	}
+
+	function resetIdPhotos() {
+		setPreview('front', null);
+		setPreview('back', null);
+		idPhotos = { front: null, back: null };
+		photoWarning = '';
+	}
+
+	function captureIdPhoto(side: IdDocumentSide, photo: Blob) {
+		idPhotos[side] = photo;
+		setPreview(side, photo);
+	}
+
+	// Client existant : affiche les photos déjà enregistrées (elles peuvent être reprises).
+	async function loadExistingIdPhotos(customerId: number) {
+		try {
+			const status = await getIdDocumentStatus(customerId);
+			for (const side of ['front', 'back'] as const) {
+				if (status[side] && !idPhotos[side]) {
+					const blob = await getIdDocumentImage(customerId, side);
+					if (blob && !idPhotos[side]) setPreview(side, blob);
+				}
+			}
+		} catch {
+			// Les photos existantes sont un plus : la saisie continue sans elles.
+		}
+	}
+
+	async function uploadPendingIdPhotos(customerId: number | undefined) {
+		const pending = (['front', 'back'] as const).filter((side) => idPhotos[side]);
+		if (!pending.length) return;
+		if (!customerId) {
+			photoWarning =
+				"Transaction créée, mais les photos de la pièce n'ont pas pu être rattachées au client.";
+			return;
+		}
+		for (const side of pending) {
+			try {
+				await uploadIdDocument(customerId, side, idPhotos[side]!);
+			} catch (error) {
+				photoWarning = `Transaction créée, mais la photo n'a pas été enregistrée : ${translateIdDocumentError(error)} Vous pourrez la reprendre depuis Clients & KYC.`;
+			}
+		}
+	}
+
+	onDestroy(resetIdPhotos);
+
+	// --- KYC : facteurs de risque du client et blocages prévus ------------------------
+	let kycRisk = $state<KycRisk | null>(null);
+	let rates = $state<ExchangeRate[]>([]);
+	// Seuils par défaut tant que le profil de risque n'est pas chargé (nouveau client).
+	const DEFAULT_THRESHOLD_USD = 1000;
+	const DEFAULT_DAILY_LIMIT_USD = 5000;
+
+	onMount(async () => {
+		try {
+			rates = await getExchangeRates();
+		} catch {
+			// Sans les taux, l'équivalent en dollars d'une opération en EUR ou GBP reste approximatif.
+		}
 	});
 
-	async function loadConfiguredRates(): Promise<boolean> {
-		configuredRates = ['USD/CDF', 'EUR/CDF', 'GBP/CDF'].flatMap((pair) => {
-			const saved = getSavedAnalysis(pair);
-			const buyRate = Number(saved?.buy_rate);
-			const sellRate = Number(saved?.sell_rate);
-			const changeRate = Number(saved?.change_rate);
-			if (!Number.isFinite(buyRate) || buyRate <= 0 || !Number.isFinite(sellRate) || sellRate <= 0) {
-				return [];
-			}
-			return [
-				{
-					pair,
-					buy_rate: buyRate,
-					sell_rate: sellRate,
-					change_rate: Number.isFinite(changeRate) ? changeRate : 0
-				}
-			];
-		});
-		updateRateFromConfiguration();
-
+	async function loadKycRisk(customerId: number) {
+		kycRisk = null;
 		try {
-			const apiRates = await listConfiguredAnalyses();
-			configuredRates = apiRates.length ? apiRates : configuredRates;
-			updateRateFromConfiguration();
+			kycRisk = await getKycRisk(customerId);
+			if (kycRisk.id_expiry_date && !form.identityDocumentExpiry) {
+				form.identityDocumentExpiry = kycRisk.id_expiry_date;
+			}
 		} catch {
-			// A saved browser value is still usable when the API cannot be reached.
+			// Le profil de risque est une aide : la saisie continue sans lui (l'API contrôle de toute façon).
 		}
-		return Number.isFinite(Number(form.rate)) && Number(form.rate) > 0;
 	}
 
-	function updateRateFromConfiguration(currency = form.currency, type = form.type) {
-		const configured = configuredRates.find((rate) => rate.pair === `${currency}/CDF`);
-		if (!configured) return;
-		form.rate = String(type === 'Achat' ? configured.buy_rate : configured.sell_rate);
+	/** Équivalent en dollars, comme l'API : une devise autre que l'USD passe par sa contre-valeur en CDF. */
+	function amountInUsd(): number {
+		const amount = Number(form.amount) || 0;
+		if (form.currency === 'USD') return amount;
+		const usdCdf = rates.find((r) => r.pair.startsWith('USD'))?.buy_rate || 0;
+		const rate =
+			Number(form.rate) || rates.find((r) => r.pair.startsWith(form.currency))?.buy_rate || 0;
+		return usdCdf > 0 && rate > 0 ? (amount * rate) / usdCdf : amount;
 	}
 
-	function changeCurrency(currency: TransactionFormData['currency']) {
-		form.currency = currency;
-		updateRateFromConfiguration(currency, form.type);
-	}
+	const blockPreview = $derived(
+		previewBlocks({
+			idType: toApiIdType(form.identityDocumentType) ?? '',
+			idExpiryDate: form.identityDocumentExpiry,
+			riskLevel: scenario === 'existing' ? kycRisk?.risk_level : undefined,
+			amountUsd: amountInUsd(),
+			idRequiredAboveUsd: kycRisk?.id_required_above_usd ?? DEFAULT_THRESHOLD_USD,
+			validationAboveUsd: kycRisk?.validation_above_usd ?? DEFAULT_THRESHOLD_USD,
+			dailyLimitUsd: kycRisk?.daily_limit_usd ?? DEFAULT_DAILY_LIMIT_USD,
+			dayTotalUsd: scenario === 'existing' ? (kycRisk?.day_total_usd ?? 0) : 0
+		})
+	);
+	const kycWarnings = $derived(
+		scenario === 'existing' && kycRisk ? kycRisk.factors.filter((f) => f.severity !== 'LOW') : []
+	);
 
-	function changeTransactionType(type: TransactionFormData['type']) {
-		form.type = type;
-		updateRateFromConfiguration(form.currency, type);
+	/** Client existant : enregistre la pièce saisie si elle diffère de celle du dossier. */
+	async function saveExistingIdentity(client: Client) {
+		const idType = toApiIdType(form.identityDocumentType) ?? '';
+		const idNumber = form.identityDocumentNumber.trim();
+		const expiry = form.identityDocumentExpiry.trim();
+		const unchanged =
+			idType === (client.id_type || '') &&
+			idNumber === (client.id_number || '') &&
+			expiry === (kycRisk?.id_expiry_date ?? '');
+		if (unchanged || !idType || !idNumber) return;
+		await updateIdentity(client.id, {
+			id_type: idType,
+			id_number: idNumber,
+			id_expiry_date: expiry
+		});
 	}
 
 	const inputClass = (field: string) =>
@@ -111,14 +209,15 @@
 	function resetModal() {
 		scenario = null;
 		currentStep = 'scenario';
-		form = createEmptyTransactionForm();
-		updateRateFromConfiguration();
+		form = newForm();
 		lookupState = createIdleLookupState();
 		foundClient = null;
 		fieldErrors = {};
 		formError = '';
 		isSubmitting = false;
 		successMessage = '';
+		kycRisk = null;
+		resetIdPhotos();
 	}
 
 	function handleClose() {
@@ -184,15 +283,11 @@
 		return !hasErrors(fieldErrors);
 	}
 
-	async function continueToNextStep() {
+	function continueToNextStep() {
 		formError = '';
 
 		if (currentStep === 'client' && validateClientStep()) {
-			const rateAvailable = await loadConfiguredRates();
 			currentStep = 'transaction';
-			if (!rateAvailable) {
-				formError = 'Aucun taux configuré pour cette devise. Saisissez un taux ou configurez-le dans Paramètres.';
-			}
 			return;
 		}
 
@@ -217,7 +312,13 @@
 
 		if (result.status === 'success') {
 			foundClient = result.client;
-			form.identityDocumentType = result.client.id_type || form.identityDocumentType;
+			resetIdPhotos();
+			loadExistingIdPhotos(result.client.id);
+			form.identityDocumentExpiry = '';
+			loadKycRisk(result.client.id);
+			form.identityDocumentType = result.client.id_type
+				? fromApiIdType(result.client.id_type)
+				: form.identityDocumentType;
 			form.identityDocumentNumber = result.client.id_number || form.identityDocumentNumber;
 		}
 	}
@@ -240,6 +341,9 @@
 		isSubmitting = true;
 
 		try {
+			if (scenario === 'existing' && foundClient) {
+				await saveExistingIdentity(foundClient);
+			}
 			const created =
 				scenario === 'new'
 					? await createTransactionWithNewClient(form)
@@ -250,12 +354,16 @@
 							foundClient!.phone
 						);
 
+			await uploadPendingIdPhotos(created.customerId ?? foundClient?.id);
 			successMessage = 'Transaction creee avec succes.';
 			onSuccess(created);
 
-			setTimeout(() => {
-				handleClose();
-			}, 900);
+			// En cas de souci avec les photos, la fenêtre reste ouverte pour que le message soit lu.
+			if (!photoWarning) {
+				setTimeout(() => {
+					handleClose();
+				}, 900);
+			}
 		} catch (error) {
 			if (error instanceof ApiError) {
 				formError = error.message;
@@ -355,25 +463,12 @@
 					{successMessage}
 				</div>
 			{/if}
-
-			{#if currentStep !== 'scenario'}
-				<div class="mb-4 rounded-lg border border-blue-100 bg-blue-50/50 p-4">
-					<label for="rate" class="mb-2 block text-sm font-semibold text-slate-700">
-						Taux de change (CDF pour 1 {form.currency})
-					</label>
-					<input
-						id="rate"
-						type="number"
-						min="0"
-						step="0.01"
-						class={inputClass('rate')}
-						placeholder="Ex: 2780"
-						inputmode="decimal"
-						bind:value={form.rate}
-					/>
-					{#if fieldErrors.rate}
-						<p class="mt-1 text-sm text-red-600">{fieldErrors.rate}</p>
-					{/if}
+			{#if photoWarning}
+				<div
+					class="mb-4 rounded-lg border border-amber-100 bg-amber-50 px-4 py-3 text-sm text-amber-800"
+					role="alert"
+				>
+					{photoWarning}
 				</div>
 			{/if}
 
@@ -427,9 +522,12 @@
 				</div>
 			{:else if currentStep === 'client' && scenario === 'new'}
 				<div class="space-y-4">
+					<p class="text-xs text-slate-500">
+						Les champs marqués d'un <span class="text-red-600" aria-hidden="true">*</span> sont obligatoires.
+					</p>
 					<div>
 						<label for="firstName" class="mb-2 block text-sm font-semibold text-slate-700"
-							>Prenom</label
+							>Prenom <span class="text-red-600" aria-hidden="true">*</span></label
 						>
 						<input
 							id="firstName"
@@ -444,7 +542,8 @@
 					</div>
 
 					<div>
-						<label for="lastName" class="mb-2 block text-sm font-semibold text-slate-700">Nom</label
+						<label for="lastName" class="mb-2 block text-sm font-semibold text-slate-700"
+							>Nom <span class="text-red-600" aria-hidden="true">*</span></label
 						>
 						<input
 							id="lastName"
@@ -460,7 +559,7 @@
 
 					<div>
 						<label for="newClientPhone" class="mb-2 block text-sm font-semibold text-slate-700">
-							Numero de telephone
+							Numero de telephone <span class="text-red-600" aria-hidden="true">*</span>
 						</label>
 						<input
 							id="newClientPhone"
@@ -480,7 +579,7 @@
 							for="identityDocumentType"
 							class="mb-2 block text-sm font-semibold text-slate-700"
 						>
-							Type de piece presentee
+							Type de piece presentee <span class="text-red-600" aria-hidden="true">*</span>
 						</label>
 						<select
 							id="identityDocumentType"
@@ -503,7 +602,7 @@
 							for="identityDocumentNumber"
 							class="mb-2 block text-sm font-semibold text-slate-700"
 						>
-							Numero de la piece
+							Numero de la piece <span class="text-red-600" aria-hidden="true">*</span>
 						</label>
 						<input
 							id="identityDocumentNumber"
@@ -513,6 +612,68 @@
 						/>
 						{#if fieldErrors.identityDocumentNumber}
 							<p class="mt-1 text-sm text-red-600">{fieldErrors.identityDocumentNumber}</p>
+						{/if}
+					</div>
+
+					<div>
+						<label
+							for="identityDocumentExpiry"
+							class="mb-2 block text-sm font-semibold text-slate-700"
+						>
+							Date d'expiration de la piece
+							{#if identityExpiryRequired(form.identityDocumentType)}<span
+									class="text-red-600"
+									aria-hidden="true">*</span
+								>{/if}
+						</label>
+						<input
+							id="identityDocumentExpiry"
+							type="date"
+							class={inputClass('identityDocumentExpiry')}
+							bind:value={form.identityDocumentExpiry}
+						/>
+						{#if fieldErrors.identityDocumentExpiry && !form.identityDocumentExpiry}
+							<p class="mt-1 text-sm text-red-600">{fieldErrors.identityDocumentExpiry}</p>
+						{:else if isExpiredDate(form.identityDocumentExpiry)}
+							<p class="mt-1 text-sm text-red-600" data-testid="expiry-warning">
+								Piece expiree : l'operation sera refusee sans derogation de la conformite.
+							</p>
+						{:else if form.identityDocumentType === "Carte d'electeur"}
+							<p class="mt-1 text-xs text-slate-500">Facultative pour la carte d'electeur.</p>
+						{/if}
+					</div>
+
+					<div>
+						<label for="clientAddress" class="mb-2 block text-sm font-semibold text-slate-700"
+							>Adresse</label
+						>
+						<input
+							id="clientAddress"
+							class={inputClass('address')}
+							placeholder="Ex: Av. du Commerce 12, Gombe"
+							autocomplete="street-address"
+							bind:value={form.address}
+						/>
+					</div>
+
+					<div>
+						<label for="clientEmail" class="mb-2 block text-sm font-semibold text-slate-700"
+							>E-mail</label
+						>
+						<input
+							id="clientEmail"
+							type="email"
+							class={inputClass('email')}
+							placeholder="Ex: client@exemple.cd"
+							autocomplete="email"
+							bind:value={form.email}
+						/>
+						{#if fieldErrors.email && validateEmail(form.email)}
+							<p class="mt-1 text-sm text-red-600">{fieldErrors.email}</p>
+						{:else}
+							<p class="mt-1 text-xs text-slate-500">
+								Facultatif : le client y recevra aussi la confirmation de l'operation.
+							</p>
 						{/if}
 					</div>
 
@@ -534,7 +695,7 @@
 							for="existingClientPhone"
 							class="mb-2 block text-sm font-semibold text-slate-700"
 						>
-							Numero de telephone du client
+							Numero de telephone du client <span class="text-red-600" aria-hidden="true">*</span>
 						</label>
 						<div class="flex flex-col gap-3 sm:flex-row">
 							<input
@@ -629,7 +790,7 @@
 							for="transactionIdentityType"
 							class="mb-2 block text-sm font-semibold text-slate-700"
 						>
-							Type de piece presentee
+							Type de piece presentee <span class="text-red-600" aria-hidden="true">*</span>
 						</label>
 						<select
 							id="transactionIdentityType"
@@ -652,7 +813,7 @@
 							for="transactionIdentityNumber"
 							class="mb-2 block text-sm font-semibold text-slate-700"
 						>
-							Numero de la piece
+							Numero de la piece <span class="text-red-600" aria-hidden="true">*</span>
 						</label>
 						<input
 							id="transactionIdentityNumber"
@@ -665,15 +826,46 @@
 						{/if}
 					</div>
 
+					<div class="sm:col-span-2">
+						<label
+							for="transactionIdentityExpiry"
+							class="mb-2 block text-sm font-semibold text-slate-700"
+						>
+							Date d'expiration de la piece
+							{#if identityExpiryRequired(form.identityDocumentType)}<span
+									class="text-red-600"
+									aria-hidden="true">*</span
+								>{/if}
+						</label>
+						<input
+							id="transactionIdentityExpiry"
+							type="date"
+							class={inputClass('identityDocumentExpiry')}
+							bind:value={form.identityDocumentExpiry}
+						/>
+						{#if fieldErrors.identityDocumentExpiry && !form.identityDocumentExpiry}
+							<p class="mt-1 text-sm text-red-600">{fieldErrors.identityDocumentExpiry}</p>
+						{:else if isExpiredDate(form.identityDocumentExpiry)}
+							<p class="mt-1 text-sm text-red-600" data-testid="expiry-warning">
+								Piece expiree : l'operation sera refusee sans derogation de la conformite.
+							</p>
+						{:else if form.identityDocumentType === "Carte d'electeur"}
+							<p class="mt-1 text-xs text-slate-500">Facultative pour la carte d'electeur.</p>
+						{/if}
+					</div>
+
+					<div class="sm:col-span-2">
+						<p class="mb-2 text-sm font-semibold text-slate-700">
+							Photo de la pièce d'identité <span class="font-normal text-slate-500"
+								>(recommandé)</span
+							>
+						</p>
+						<IdDocumentCapture previews={idPreviews} onCapture={captureIdPhoto} />
+					</div>
+
 					<div>
 						<label for="type" class="mb-2 block text-sm font-semibold text-slate-700">Type</label>
-		<select
-			id="type"
-			class={inputClass('type')}
-			value={form.type}
-			onchange={(event) =>
-				changeTransactionType(event.currentTarget.value as TransactionFormData['type'])}
-		>
+						<select id="type" class={inputClass('type')} bind:value={form.type}>
 							<option value="Achat">Achat</option>
 							<option value="Vente">Vente</option>
 						</select>
@@ -683,12 +875,7 @@
 						<label for="currency" class="mb-2 block text-sm font-semibold text-slate-700"
 							>Devise</label
 						>
-		<select
-			id="currency"
-			class={inputClass('currency')}
-			value={form.currency}
-			onchange={(event) => changeCurrency(event.currentTarget.value as TransactionFormData['currency'])}
-		>
+						<select id="currency" class={inputClass('currency')} bind:value={form.currency}>
 							<option value="USD">USD</option>
 							<option value="EUR">EUR</option>
 							<option value="GBP">GBP</option>
@@ -697,7 +884,7 @@
 
 					<div>
 						<label for="amount" class="mb-2 block text-sm font-semibold text-slate-700"
-							>Montant</label
+							>Montant <span class="text-red-600" aria-hidden="true">*</span></label
 						>
 						<input
 							id="amount"
@@ -711,6 +898,23 @@
 						/>
 						{#if fieldErrors.amount}
 							<p class="mt-1 text-sm text-red-600">{fieldErrors.amount}</p>
+						{/if}
+					</div>
+
+					<div>
+						<label for="rate" class="mb-2 block text-sm font-semibold text-slate-700">Taux</label>
+						<input
+							id="rate"
+							type="number"
+							min="0"
+							step="0.01"
+							class={inputClass('rate')}
+							placeholder="Ex: 2780"
+							inputmode="decimal"
+							bind:value={form.rate}
+						/>
+						{#if fieldErrors.rate}
+							<p class="mt-1 text-sm text-red-600">{fieldErrors.rate}</p>
 						{/if}
 					</div>
 
@@ -773,6 +977,18 @@
 								</span>
 							</div>
 							<div class="flex items-start justify-between gap-4">
+								<span class="text-slate-500">Photo de la piece</span>
+								<span class="text-right font-semibold text-slate-950" data-testid="photo-summary">
+									{#if idPreviews.front || idPreviews.back}
+										{[idPreviews.front ? 'Recto' : '', idPreviews.back ? 'Verso' : '']
+											.filter(Boolean)
+											.join(' + ')}
+									{:else}
+										Non prise
+									{/if}
+								</span>
+							</div>
+							<div class="flex items-start justify-between gap-4">
 								<span class="text-slate-500">Operation</span>
 								<span class="text-right font-semibold text-slate-950"
 									>{form.type} {form.currency}</span
@@ -792,6 +1008,50 @@
 							</div>
 						</div>
 					</div>
+
+					{#if blockPreview.length}
+						<div
+							class="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800"
+							data-testid="kyc-blocks"
+						>
+							{#if kycRisk?.override}
+								<p class="font-semibold">Dérogation de la conformité active</p>
+								<p class="mt-1">
+									Accordée par {kycRisk.override.granted_by_name || 'la conformité'} : « {kycRisk
+										.override.reason} ». Elle couvre cette opération (une seule fois).
+								</p>
+							{:else}
+								<p class="font-semibold">Cette opération sera refusée</p>
+								<ul class="mt-1 list-disc space-y-0.5 pl-5">
+									{#each blockPreview as block (block.code)}
+										<li>{block.message}</li>
+									{/each}
+								</ul>
+								<p class="mt-2">
+									Régularisez la pièce du client ou demandez une dérogation à la conformité (Clients
+									& KYC → Dossier KYC).
+								</p>
+							{/if}
+						</div>
+					{/if}
+
+					{#if kycWarnings.length}
+						<div
+							class="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900"
+							data-testid="kyc-warnings"
+						>
+							<p class="font-semibold">Points de vigilance KYC</p>
+							<ul class="mt-2 space-y-1.5">
+								{#each kycWarnings as factor (factor.code)}
+									{@const severity = factorSeverity(factor.severity)}
+									<li class="flex items-start gap-2">
+										<span class="app-badge {severity.badge} shrink-0">{severity.label}</span>
+										<span>{factorText(factor.code, factor.reason)}</span>
+									</li>
+								{/each}
+							</ul>
+						</div>
+					{/if}
 				</div>
 			{/if}
 		</form>
@@ -820,7 +1080,7 @@
 					<button
 						type="button"
 						class="rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
-						disabled={isSubmitting}
+						disabled={isSubmitting || Boolean(successMessage)}
 						onclick={submitTransaction}
 					>
 						{#if isSubmitting}

@@ -5,12 +5,18 @@
 	import { page } from '$app/state';
 	import { session } from '$lib/stores/session.js';
 	import Sidebar from '$lib/components/layouts/sidebar.svelte';
-	import favicon from '$lib/assets/favicon.svg';
+	import { onMount } from 'svelte';
+	import { get } from 'svelte/store';
+	import { applyTheme, preferences } from '$lib/stores/preferences.js';
+
+	// Réapplique le thème (et suit le réglage de l'appareil quand « Système » est choisi).
+	onMount(() => applyTheme(get(preferences).theme));
 
 	let { children } = $props();
 	let authChecked = $state(false);
 
-	const publicRoutes = ['/', '/login', '/logout'];
+	// Pages accessibles sans être connecté ; toutes les autres ont le menu et exigent une session.
+	const publicRoutes = ['/', '/login', '/logout', '/register', '/reset', '/demo'];
 
 	function isPublicRoute(pathname) {
 		return publicRoutes.some((route) => pathname === route || pathname.startsWith(`${route}/`));
@@ -31,7 +37,7 @@
 	});
 </script>
 
-<svelte:head><link rel="icon" href={favicon} /></svelte:head>
+<svelte:head><link rel="icon" type="image/png" href="/icons/favicon-64.png" /></svelte:head>
 
 {#if isPublicRoute(page.url.pathname)}
 	{@render children()}
@@ -39,7 +45,7 @@
 	<div class="min-h-screen">
 		<Sidebar />
 
-		<main class="min-h-screen lg:ml-64">
+		<main class="app-banknotes min-h-screen pt-16 lg:ml-64 lg:pt-0">
 			{@render children()}
 		</main>
 	</div>

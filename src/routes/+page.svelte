@@ -85,7 +85,7 @@
 				</h2>
 
 				<p class="mt-5 max-w-xl text-base leading-7 text-slate-600">
-					FX App guide les équipes dans les actions essentielles : identifier le client, enregistrer
+					MOTUYA Fx. guide les équipes dans les actions essentielles : identifier le client, enregistrer
 					l'opération et garder une trace claire des contrôles.
 				</p>
 			</div>
@@ -114,7 +114,7 @@
 					Prêt à structurer votre conformité de change ?
 				</h2>
 				<p class="mt-5 text-base leading-7 text-blue-100">
-					Découvrez comment FX App peut accompagner vos équipes dans la gestion des clients,
+					Découvrez comment MOTUYA Fx. peut accompagner vos équipes dans la gestion des clients,
 					transactions et rapports.
 				</p>
 			</div>

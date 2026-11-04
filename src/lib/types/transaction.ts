@@ -44,8 +44,21 @@ export type TransactionApiResponse = {
 	customer_id: number;
 };
 
+export type ReceiptData = {
+	type: 'BUY' | 'SELL';
+	currency: string;
+	amount: number;
+	rate: number;
+	counterValue: number; // en CDF
+	status: string; // code API : PENDING, COMPLETED, CANCELLED
+	createdAt: string;
+	traderId?: number;
+};
+
 export type CreatedTransaction = {
 	id: string;
+	customerId?: number;
+	receipt?: ReceiptData;
 	client: string;
 	type: string;
 	amount: string;
@@ -67,6 +80,11 @@ export type TransactionFormData = {
 	kycStatus: 'Verifie' | 'A completer' | 'En revue';
 	identityDocumentType: string;
 	identityDocumentNumber: string;
+	/** Date d'expiration de la pièce (AAAA-MM-JJ) ; facultative pour la carte d'électeur. */
+	identityDocumentExpiry: string;
+	address: string;
+	/** E-mail facultatif : la confirmation de l'opération y est aussi envoyée. */
+	email: string;
 	type: TransactionType;
 	currency: TransactionCurrency;
 	amount: string | number;
@@ -84,6 +102,9 @@ export function createEmptyTransactionForm(): TransactionFormData {
 		kycStatus: 'Verifie',
 		identityDocumentType: '',
 		identityDocumentNumber: '',
+		identityDocumentExpiry: '',
+		address: '',
+		email: '',
 		type: 'Achat',
 		currency: 'USD',
 		amount: '',

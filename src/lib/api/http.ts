@@ -8,6 +8,8 @@ type RequestOptions = {
 	headers?: Record<string, string>;
 	/** Set true for endpoints that must not send the stored Bearer token (e.g. login). */
 	skipAuth?: boolean;
+	/** Corps brut (ex. FormData pour un envoi de fichier) : le navigateur fixe lui-même le Content-Type. */
+	rawBody?: BodyInit;
 };
 
 function getApiBaseUrl(): string {
@@ -30,7 +32,11 @@ async function parseJsonResponse(response: Response): Promise<unknown> {
 	try {
 		return JSON.parse(text);
 	} catch {
-		return { message: text };
+		// Texte court de l'API (http.Error) : on le garde. Page HTML (ex. 404 du serveur
+		// de développement quand le relais /api est absent) : jamais affichée telle quelle.
+		const trimmed = text.trim();
+		if (trimmed.startsWith('<') || trimmed.length > 300) return null;
+		return { message: trimmed };
 	}
 }
 
@@ -53,7 +59,9 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
 		headers
 	};
 
-	if (options.body !== undefined) {
+	if (options.rawBody !== undefined) {
+		init.body = options.rawBody;
+	} else if (options.body !== undefined) {
 		headers['Content-Type'] = 'application/json';
 		init.body = JSON.stringify(options.body);
 	}
@@ -89,4 +97,23 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
 		response.status,
 		fieldErrors
 	);
+}
+
+/** Télécharge un fichier protégé (ex. photo de profil). Renvoie null s'il n'existe pas (404). */
+export async function apiFetchBlob(path: string): Promise<Blob | null> {
+	const url = `${getApiBaseUrl()}${path.startsWith('/') ? path : `/${path}`}`;
+	const token = getStoredAccessToken();
+	let response: Response;
+
+	try {
+		response = await fetch(url, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+	} catch {
+		throw new ApiError('Impossible de contacter le serveur. Verifiez votre connexion.', 0);
+	}
+
+	if (response.status === 404) return null;
+	if (response.status === 401) clearSession();
+	if (!response.ok) throw new ApiError(mapHttpStatusToMessage(response.status), response.status);
+
+	return response.blob();
 }

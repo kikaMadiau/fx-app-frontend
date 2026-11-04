@@ -1,6 +1,24 @@
 @import 'tailwindcss';
 @plugin '@tailwindcss/typography';
 
+/* Charte : bleu officiel de la Banque Centrale du Congo (bcc.cd, #005CA9) et sa police,
+   Nunito Sans. La gamme « blue » de Tailwind est remplacée, donc toutes les classes
+   bg-blue-*, text-blue-*… des pages suivent sans modifier chaque écran. */
+@theme {
+	--font-sans: 'Nunito Sans', ui-sans-serif, system-ui, sans-serif;
+	--color-blue-50: #eaf6ff;
+	--color-blue-100: #d3eafb;
+	--color-blue-200: #a9d3f5;
+	--color-blue-300: #79b6ea;
+	--color-blue-400: #3d8fd6;
+	--color-blue-500: #0069b4;
+	--color-blue-600: #005ca9;
+	--color-blue-700: #004f92;
+	--color-blue-800: #0a3f73;
+	--color-blue-900: #0f2849;
+	--color-blue-950: #0a1a31;
+}
+
 * {
 	box-sizing: border-box;
 }
@@ -13,8 +31,8 @@
 	--fx-border-soft: #edf2f7;
 	--fx-text: #0f172a;
 	--fx-muted: #64748b;
-	--fx-blue: #2563eb;
-	--fx-blue-dark: #1d4ed8;
+	--fx-blue: #005ca9;
+	--fx-blue-dark: #004f92;
 	--fx-green: #047857;
 	--fx-amber: #b45309;
 	--fx-red: #b91c1c;
@@ -23,16 +41,11 @@
 	--fx-shadow-soft: 0 10px 30px rgb(15 23 42 / 0.06);
 }
 
+/* Le fond est porté par html (pas body) : body reste transparent pour laisser voir
+   le filigrane des billets, posé juste au-dessus du fond. */
 html {
-	background: var(--fx-bg);
-}
-
-body {
-	margin: 0;
-	padding: 0;
-	border: 0;
-	outline: 0;
-	background:
+	background-color: var(--fx-bg);
+	background-image:
 		linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%),
 		linear-gradient(90deg, rgb(15 23 42 / 0.035) 1px, transparent 1px),
 		linear-gradient(180deg, rgb(15 23 42 / 0.035) 1px, transparent 1px);
@@ -40,6 +53,15 @@ body {
 		auto,
 		44px 44px,
 		44px 44px;
+}
+
+body {
+	font-family: var(--font-sans);
+	margin: 0;
+	padding: 0;
+	border: 0;
+	outline: 0;
+	background: transparent;
 	color: var(--fx-text);
 }
 
@@ -72,8 +94,8 @@ textarea {
 	display: inline-flex;
 	width: fit-content;
 	border-radius: 999px;
-	border: 1px solid rgba(37, 99, 235, 0.2);
-	background: linear-gradient(135deg, rgba(37, 99, 235, 0.1), rgba(37, 99, 235, 0.05));
+	border: 1px solid rgba(0, 92, 169, 0.2);
+	background: linear-gradient(135deg, rgba(0, 92, 169, 0.1), rgba(0, 92, 169, 0.05));
 	padding: 10px 16px;
 	color: var(--fx-blue);
 	font-size: 12px;
@@ -231,12 +253,12 @@ textarea {
 	border: 1px solid var(--fx-blue);
 	background: var(--fx-blue);
 	color: white;
-	box-shadow: 0 16px 40px rgb(37 99 235 / 0.2);
+	box-shadow: 0 16px 40px rgb(0 92 169 / 0.2);
 }
 .app-button-primary:hover {
 	background: var(--fx-blue-dark);
 	border-color: var(--fx-blue-dark);
-	box-shadow: 0 20px 50px rgb(37 99 235 / 0.25);
+	box-shadow: 0 20px 50px rgb(0 92 169 / 0.25);
 }
 
 .app-button-secondary {
@@ -278,7 +300,9 @@ textarea {
 }
 .app-input:focus {
 	border-color: var(--fx-blue);
-	box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.1), 0 2px 8px rgba(15, 23, 42, 0.04);
+	box-shadow:
+		0 0 0 4px rgba(0, 92, 169, 0.1),
+		0 2px 8px rgba(15, 23, 42, 0.04);
 }
 
 .app-badge {
@@ -329,6 +353,12 @@ textarea {
 	box-shadow: 0 40px 120px rgb(15 23 42 / 0.32);
 }
 
+/* Les colonnes de grille peuvent rétrécir : un tableau large défile dans sa carte
+   au lieu d'élargir toute la page. */
+.app-shell .grid > * {
+	min-width: 0;
+}
+
 @media (max-width: 768px) {
 	.app-shell {
 		padding: 24px 16px;
@@ -336,9 +366,240 @@ textarea {
 
 	.app-header-row {
 		flex-direction: column;
+		align-items: stretch;
 	}
 
 	.app-title {
 		font-size: 24px;
+	}
+
+	.app-card-header {
+		padding: 18px;
+	}
+
+	.app-stat-card {
+		padding: 20px;
+	}
+
+	.app-stat-value {
+		margin-top: 10px;
+		font-size: 28px;
+	}
+
+	.app-table th {
+		padding: 12px 14px;
+	}
+
+	.app-table td {
+		padding: 14px;
+	}
+
+	.app-modal-backdrop {
+		align-items: flex-end;
+		padding: 0;
+	}
+
+	.app-modal-backdrop .app-modal {
+		max-height: 92dvh;
+		overflow-y: auto;
+		border-radius: 20px 20px 0 0;
+	}
+}
+
+/* Écrans tactiles : pas d'effet de survol qui reste « collé » après un appui. */
+@media (hover: none) {
+	.app-card:hover,
+	.app-stat-card:hover {
+		transform: none;
+	}
+}
+
+/* Boutons désactivés (ex. « Enregistrer » tant que rien n'a changé). */
+.app-button:disabled {
+	cursor: not-allowed;
+	opacity: 0.55;
+	box-shadow: none;
+}
+
+/* ===================== Thème sombre ===================== */
+/* Activé par <html data-theme="dark"> (Paramètres > Apparence). Les pages utilisent des classes
+   Tailwind « claires » (bg-white, text-slate-950…) : on les réinterprète ici plutôt que de
+   modifier chaque page. */
+:root[data-theme='dark'] {
+	--fx-bg: #0b1220;
+	--fx-surface: #111a2e;
+	--fx-surface-muted: #16213a;
+	--fx-border: #26324a;
+	--fx-border-soft: #1d283f;
+	--fx-text: #e6ebf5;
+	--fx-muted: #94a3b8;
+	--fx-blue: #3d8fd6;
+	--fx-blue-dark: #0069b4;
+	--fx-green: #34d399;
+	--fx-amber: #fbbf24;
+	--fx-red: #f87171;
+	color-scheme: dark;
+}
+
+:root[data-theme='dark'],
+:root[data-theme='dark'] body {
+	color: var(--fx-text);
+}
+
+:root[data-theme='dark'] {
+	background-color: var(--fx-bg);
+	background-image:
+		linear-gradient(180deg, #0b1220 0%, #0e1628 100%),
+		linear-gradient(90deg, rgb(148 163 184 / 0.04) 1px, transparent 1px),
+		linear-gradient(180deg, rgb(148 163 184 / 0.04) 1px, transparent 1px);
+	background-size:
+		auto,
+		44px 44px,
+		44px 44px;
+}
+
+/* Composants de l'application */
+:root[data-theme='dark'] :is(.app-card, .app-stat-card, .app-table-wrap, .app-modal) {
+	border-color: var(--fx-border);
+	background: var(--fx-surface);
+	box-shadow: 0 20px 50px rgb(0 0 0 / 0.35);
+}
+:root[data-theme='dark'] .app-card-header,
+:root[data-theme='dark'] .app-table tbody tr {
+	border-color: var(--fx-border);
+}
+:root[data-theme='dark'] .app-table thead {
+	background: var(--fx-surface-muted);
+}
+:root[data-theme='dark'] .app-table td {
+	color: #cbd5e1;
+}
+:root[data-theme='dark'] .app-table tbody tr:hover {
+	background: var(--fx-surface-muted);
+}
+:root[data-theme='dark'] :is(.app-input, .app-button-secondary, .app-button-danger) {
+	border-color: var(--fx-border);
+	background: var(--fx-surface-muted);
+	color: var(--fx-text);
+	box-shadow: none;
+}
+:root[data-theme='dark'] .app-button-danger {
+	color: var(--fx-red);
+}
+:root[data-theme='dark'] .app-button-secondary:hover {
+	background: #1d2a47;
+}
+:root[data-theme='dark'] .app-kicker {
+	border-color: rgb(61 143 214 / 0.35);
+	background: rgb(61 143 214 / 0.12);
+	color: #a9d3f5;
+}
+:root[data-theme='dark'] .app-badge-success {
+	background: rgb(52 211 153 / 0.12);
+}
+:root[data-theme='dark'] .app-badge-warning {
+	background: rgb(251 191 36 / 0.12);
+}
+:root[data-theme='dark'] .app-badge-danger {
+	background: rgb(248 113 113 / 0.12);
+}
+:root[data-theme='dark'] .app-badge-info {
+	background: rgb(61 143 214 / 0.14);
+}
+
+/* Surfaces Tailwind */
+:root[data-theme='dark'] :is(.bg-white, .bg-white\/95, .bg-white\/90) {
+	background-color: var(--fx-surface);
+}
+:root[data-theme='dark'] .bg-white\/70 {
+	background-color: rgb(17 26 46 / 0.7);
+}
+:root[data-theme='dark'] :is(.bg-slate-50, .bg-slate-50\/50) {
+	background-color: var(--fx-surface-muted);
+}
+:root[data-theme='dark'] :is(.hover\:bg-slate-50:hover, .hover\:bg-slate-100:hover) {
+	background-color: #1d2a47;
+}
+:root[data-theme='dark'] .bg-slate-200 {
+	background-color: #334155;
+}
+:root[data-theme='dark'] :is(.bg-blue-50, .bg-blue-100) {
+	background-color: rgb(61 143 214 / 0.15);
+}
+:root[data-theme='dark'] :is(.bg-red-50, .bg-red-50\/40, .bg-red-100, .hover\:bg-red-50:hover) {
+	background-color: rgb(248 113 113 / 0.12);
+}
+:root[data-theme='dark'] :is(.bg-green-50, .bg-green-100, .bg-emerald-50, .bg-emerald-100) {
+	background-color: rgb(52 211 153 / 0.12);
+}
+:root[data-theme='dark'] .bg-amber-50 {
+	background-color: rgb(251 191 36 / 0.12);
+}
+
+/* Textes */
+:root[data-theme='dark'] :is(.text-slate-950, .text-slate-800, .hover\:text-slate-950:hover) {
+	color: var(--fx-text);
+}
+:root[data-theme='dark'] :is(.text-slate-700, .text-slate-600, .hover\:text-slate-700:hover) {
+	color: #cbd5e1;
+}
+:root[data-theme='dark'] .text-slate-500 {
+	color: var(--fx-muted);
+}
+:root[data-theme='dark'] .text-slate-400 {
+	color: #7c8aa3;
+}
+:root[data-theme='dark'] :is(.text-blue-600, .text-blue-700) {
+	color: #60a5fa;
+}
+:root[data-theme='dark'] :is(.text-red-600, .text-red-700) {
+	color: #fca5a5;
+}
+:root[data-theme='dark'] :is(.text-green-600, .text-green-700, .text-emerald-700) {
+	color: #6ee7b7;
+}
+:root[data-theme='dark'] .text-amber-800 {
+	color: #fcd34d;
+}
+
+/* Bordures */
+:root[data-theme='dark'] :is(.border-slate-100, .border-slate-200, .border-slate-300) {
+	border-color: var(--fx-border);
+}
+:root[data-theme='dark'] :is(.border-red-200, .border-red-300) {
+	border-color: rgb(248 113 113 / 0.35);
+}
+:root[data-theme='dark'] :is(.border-emerald-200, .border-amber-200) {
+	border-color: rgb(148 163 184 / 0.25);
+}
+
+/* Champs natifs (date, listes) */
+:root[data-theme='dark'] :is(input, select, textarea) {
+	color-scheme: dark;
+}
+
+/* Billets du Congo en filigrane derrière les pages de l'application, à peine visibles. */
+.app-banknotes::before {
+	content: '';
+	position: fixed;
+	inset: 0;
+	z-index: -1;
+	pointer-events: none;
+	background: url('/images/billets-cdf.jpg') center / cover no-repeat;
+	opacity: 0.07;
+	filter: saturate(0.7);
+}
+@media (min-width: 1024px) {
+	.app-banknotes::before {
+		left: 16rem; /* à droite du menu */
+	}
+}
+:root[data-theme='dark'] .app-banknotes::before {
+	opacity: 0.05;
+	filter: grayscale(0.4) brightness(0.8);
+}
+@media print {
+	.app-banknotes::before {
+		display: none;
 	}
 }

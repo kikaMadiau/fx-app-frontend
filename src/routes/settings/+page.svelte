@@ -1,371 +1,505 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { goto } from '$app/navigation';
+	import { resolve } from '$app/paths';
 	import {
-		listAnalyses,
-		saveConfiguredAnalyses,
-		type ExchangeAnalysis
-	} from '$lib/api/analyses.js';
-	let exchangeRates = $state<ExchangeAnalysis[]>([]);
-	let ratesLoading = $state(true);
-	let ratesSaving = $state(false);
-	let ratesMessage = $state('');
-	let ratesError = $state('');
+		changePassword,
+		getProfile,
+		translateProfileError,
+		updatePreferences
+	} from '$lib/api/profile.js';
+	import { clearSession, session } from '$lib/stores/session.js';
+	import { setProfilePhoto } from '$lib/stores/profile-photo.js';
+	import {
+		DEFAULT_PREFERENCES,
+		preferences,
+		setPreferences,
+		type Preferences,
+		type Theme
+	} from '$lib/stores/preferences.js';
+	import { formatDate } from '$lib/utils/dates.js';
+	import NotificationSettingsCard from '$lib/components/admin/NotificationSettingsCard.svelte';
+	import { isPlatformAdmin } from '$lib/types/trader.js';
+
+	const CURRENCIES = [
+		{ value: 'USD', label: 'USD – Dollar américain' },
+		{ value: 'EUR', label: 'EUR – Euro' },
+		{ value: 'GBP', label: 'GBP – Livre sterling' }
+	];
+	// La RDC a deux fuseaux horaires.
+	const TIMEZONES = [
+		{ value: 'Africa/Kinshasa', label: 'Kinshasa – ouest (UTC+1)' },
+		{ value: 'Africa/Lubumbashi', label: 'Lubumbashi – est (UTC+2)' }
+	];
+	const DATE_FORMATS = [
+		{ value: 'DD/MM/YYYY', label: 'JJ/MM/AAAA' },
+		{ value: 'YYYY-MM-DD', label: 'AAAA-MM-JJ' },
+		{ value: 'LONG', label: 'En toutes lettres' }
+	];
+	const THEMES: { value: Theme; label: string; description: string; swatch: string }[] = [
+		{ value: 'light', label: 'Clair', description: 'Mode clair par défaut', swatch: 'bg-blue-600' },
+		{
+			value: 'dark',
+			label: 'Sombre',
+			description: 'Repose les yeux le soir',
+			swatch: 'bg-slate-950 ring-1 ring-slate-500'
+		},
+		{
+			value: 'system',
+			label: 'Système',
+			description: "Suit le réglage de l'appareil",
+			swatch: 'bg-gradient-to-br from-slate-200 to-slate-800'
+		}
+	];
+
+	let form = $state<Preferences>({ ...$preferences });
+	let saving = $state(false);
+	let message = $state<{ kind: 'ok' | 'error'; text: string } | null>(null);
+	let themeSaving = $state(false);
+	let themeError = $state('');
+
+	// Mot de passe
+	let passwordOpen = $state(false);
+	let currentPassword = $state('');
+	let newPassword = $state('');
+	let confirmPassword = $state('');
+	let passwordBusy = $state(false);
+	let passwordError = $state('');
+	let passwordDone = $state(false);
+
+	const dirty = $derived(
+		form.currency !== $preferences.currency ||
+			form.timezone !== $preferences.timezone ||
+			form.date_format !== $preferences.date_format ||
+			form.dashboard_alerts !== $preferences.dashboard_alerts
+	);
+	const now = new Date();
+	const datePreview = $derived(
+		formatDate(now, { withTime: true, timezone: form.timezone, dateFormat: form.date_format })
+	);
 
 	onMount(async () => {
-		try {
-			const apiRates = await listAnalyses();
-			const saved = localStorage.getItem('fx-app.exchange-rate-overrides');
-			const overrides = saved ? (JSON.parse(saved) as Record<string, Partial<ExchangeAnalysis>>) : {};
-			exchangeRates = apiRates.map((rate) => ({ ...rate, ...overrides[rate.pair] }));
-		} catch {
-			ratesError = 'Impossible de charger les taux de change.';
-		} finally {
-			ratesLoading = false;
-		}
-	});
-
-	const saveExchangeRates = () => {
-		ratesSaving = true;
-		ratesMessage = '';
-		ratesError = '';
-		if (exchangeRates.some((rate) => !Number.isFinite(rate.buy_rate) || rate.buy_rate <= 0 || !Number.isFinite(rate.sell_rate) || rate.sell_rate <= 0 || !Number.isFinite(rate.change_rate))) {
-			ratesError = 'Saisissez des taux d’achat et de vente positifs, ainsi qu’une variation valide.';
-			ratesSaving = false;
+		if (!$session) {
+			await goto(resolve('/login'));
 			return;
 		}
 		try {
-			saveConfiguredAnalyses(exchangeRates);
-			ratesMessage = 'Les taux sont enregistrés et seront affichés sur le tableau de bord de ce navigateur.';
-		} catch {
-			ratesError = 'Impossible d’enregistrer les taux dans ce navigateur.';
-		} finally {
-			ratesSaving = false;
+			const response = await getProfile();
+			if (response.profile.preferences) {
+				setPreferences(response.profile.preferences);
+				form = { ...response.profile.preferences };
+			}
+		} catch (error) {
+			message = { kind: 'error', text: translateProfileError(error) };
 		}
-	};
+	});
 
-	const settings = {
-		currency: 'CDF',
-		timezone: 'Africa/Kinshasa',
-		language: 'Français',
-		dateFormat: 'JJ/MM/AAAA',
-		notifications: {
-			email: true,
-			sms: false,
-			dashboard: true
-		},
-		theme: 'Clair'
-	};
+	async function save(next: Preferences) {
+		const saved = await updatePreferences(next);
+		setPreferences(saved);
+		return saved;
+	}
 
-	const handleSave = () => {
-		console.log('Paramètres sauvegardés');
-	};
+	async function saveGeneral(event: SubmitEvent) {
+		event.preventDefault();
+		message = null;
+		saving = true;
+		try {
+			const saved = await save({ ...$preferences, ...form, theme: $preferences.theme });
+			form = { ...saved };
+			message = { kind: 'ok', text: 'Préférences enregistrées.' };
+		} catch (error) {
+			message = { kind: 'error', text: translateProfileError(error) };
+		} finally {
+			saving = false;
+		}
+	}
+
+	function cancel() {
+		form = { ...$preferences };
+		message = null;
+	}
+
+	function restoreDefaults() {
+		form = { ...DEFAULT_PREFERENCES, theme: $preferences.theme };
+		message = null;
+	}
+
+	// Le thème s'applique et s'enregistre dès le clic.
+	async function chooseTheme(theme: Theme) {
+		if (theme === $preferences.theme) return;
+		const previous = $preferences;
+		themeError = '';
+		themeSaving = true;
+		setPreferences({ ...previous, theme });
+		try {
+			await save({ ...previous, theme });
+		} catch (error) {
+			setPreferences(previous);
+			themeError = translateProfileError(error);
+		} finally {
+			themeSaving = false;
+		}
+	}
+
+	function openPassword() {
+		passwordOpen = true;
+		passwordDone = false;
+		passwordError = '';
+		currentPassword = newPassword = confirmPassword = '';
+	}
+
+	async function submitPassword(event: SubmitEvent) {
+		event.preventDefault();
+		passwordError = '';
+		if (newPassword.length < 12) {
+			passwordError = 'Le nouveau mot de passe doit contenir au moins 12 caractères.';
+			return;
+		}
+		if (newPassword !== confirmPassword) {
+			passwordError = 'Les deux nouveaux mots de passe ne correspondent pas.';
+			return;
+		}
+		passwordBusy = true;
+		try {
+			await changePassword(currentPassword, newPassword);
+			passwordDone = true;
+			currentPassword = newPassword = confirmPassword = '';
+		} catch (error) {
+			passwordError = translateProfileError(error);
+		} finally {
+			passwordBusy = false;
+		}
+	}
+
+	async function logout() {
+		clearSession();
+		setProfilePhoto(null);
+		await goto(resolve('/login'));
+	}
 </script>
 
 <section class="app-shell">
 	<div class="app-header">
 		<div>
-			<span class="app-kicker">Configuration</span>
 			<h1 class="app-title">Paramètres</h1>
-			<p class="app-subtitle">Configuration générale de la plateforme.</p>
+			<p class="app-subtitle">Affichage, apparence et sécurité de votre compte.</p>
 		</div>
 	</div>
 
-	<div class="mt-6 grid gap-6 lg:grid-cols-3">
+	<div class="grid gap-6 lg:grid-cols-3">
 		<div class="space-y-6 lg:col-span-2">
-			<div class="app-card p-6">
-				<div class="mb-6 border-b border-slate-100 pb-4">
-					<h3 class="text-lg font-semibold text-slate-950">Taux de change</h3>
-					<p class="mt-1 text-sm text-slate-500">
-						Configurez les taux affichés sur le tableau de bord.
-					</p>
-				</div>
+			{#if isPlatformAdmin($session?.trader)}
+				<NotificationSettingsCard />
+			{/if}
 
-				{#if ratesLoading}
-					<p class="text-sm text-slate-500">Chargement des taux…</p>
-				{:else if ratesError && exchangeRates.length === 0}
-					<p class="text-sm text-red-700" role="alert">{ratesError}</p>
-				{:else}
-					<div class="space-y-4">
-						{#each exchangeRates as rate, index (rate.pair)}
-							<div class="rounded-xl border border-slate-100 p-4">
-								<p class="mb-3 font-semibold text-slate-950">{rate.pair}</p>
-								<div class="grid gap-3 sm:grid-cols-3">
-									<label class="space-y-2 text-sm font-medium text-slate-700">
-										Achat
-										<input class="app-input" type="number" min="0.01" step="0.01" bind:value={exchangeRates[index].buy_rate} />
-									</label>
-									<label class="space-y-2 text-sm font-medium text-slate-700">
-										Vente
-										<input class="app-input" type="number" min="0.01" step="0.01" bind:value={exchangeRates[index].sell_rate} />
-									</label>
-									<label class="space-y-2 text-sm font-medium text-slate-700">
-										Variation (%)
-										<input class="app-input" type="number" step="0.01" bind:value={exchangeRates[index].change_rate} />
-									</label>
-								</div>
-							</div>
-						{/each}
-					</div>
-
-					{#if ratesError}<p class="mt-4 text-sm text-red-700" role="alert">{ratesError}</p>{/if}
-					{#if ratesMessage}<p class="mt-4 text-sm text-green-700" role="status">{ratesMessage}</p>{/if}
-					<div class="mt-6 flex justify-end">
-						<button class="app-button app-button-primary" onclick={saveExchangeRates} disabled={ratesSaving}>
-							{ratesSaving ? 'Enregistrement…' : 'Enregistrer les taux'}
-						</button>
-					</div>
-				{/if}
-			</div>
-
-			<div class="app-card p-6">
+			<!-- Préférences générales -->
+			<form class="app-card p-6" onsubmit={saveGeneral}>
 				<div class="mb-6 border-b border-slate-100 pb-4">
 					<h3 class="text-lg font-semibold text-slate-950">Préférences générales</h3>
-					<p class="mt-1 text-sm text-slate-500">Configuration de base de votre compte.</p>
+					<p class="mt-1 text-sm text-slate-500">Appliquées sur tous vos appareils.</p>
 				</div>
 
-				<div class="space-y-5">
-					<div class="grid gap-3 sm:grid-cols-2">
-						<div class="space-y-2">
-							<label for="settings-currency" class="text-sm font-medium text-slate-700"
-								>Devise principale</label
-							>
-							<select id="settings-currency" class="app-input">
-								<option>CDF</option>
-								<option>USD</option>
-								<option>EUR</option>
-							</select>
-						</div>
-						<div class="space-y-2">
-							<label for="settings-timezone" class="text-sm font-medium text-slate-700"
-								>Fuseau horaire</label
-							>
-							<select id="settings-timezone" class="app-input">
-								<option>Africa/Kinshasa</option>
-								<option>Europe/Paris</option>
-								<option>America/New_York</option>
-							</select>
-						</div>
+				<div class="grid gap-5 sm:grid-cols-2">
+					<div class="space-y-2">
+						<label for="currency" class="text-sm font-medium text-slate-700"
+							>Devise par défaut des opérations</label
+						>
+						<select id="currency" class="app-input" bind:value={form.currency}>
+							{#each CURRENCIES as option (option.value)}
+								<option value={option.value}>{option.label}</option>
+							{/each}
+						</select>
+						<p class="text-xs text-slate-400">
+							Proposée en premier dans « Nouvelle transaction ». La contre-valeur reste en CDF.
+						</p>
 					</div>
 					<div class="space-y-2">
-						<label for="settings-language" class="text-sm font-medium text-slate-700">Langue</label>
-						<select id="settings-language" class="app-input">
-							<option>Français</option>
-							<option>Anglais</option>
+						<label for="timezone" class="text-sm font-medium text-slate-700">Fuseau horaire</label>
+						<select id="timezone" class="app-input" bind:value={form.timezone}>
+							{#each TIMEZONES as option (option.value)}
+								<option value={option.value}>{option.label}</option>
+							{/each}
 						</select>
 					</div>
 					<div class="space-y-2">
-						<label for="settings-date-format" class="text-sm font-medium text-slate-700"
+						<label for="date_format" class="text-sm font-medium text-slate-700"
 							>Format de date</label
 						>
-						<select id="settings-date-format" class="app-input">
-							<option>JJ/MM/AAAA</option>
-							<option>AAAA-MM-JJ</option>
-							<option>MM/JJ/AAAA</option>
+						<select id="date_format" class="app-input" bind:value={form.date_format}>
+							{#each DATE_FORMATS as option (option.value)}
+								<option value={option.value}>{option.label}</option>
+							{/each}
 						</select>
 					</div>
+					<div class="space-y-2">
+						<p class="text-sm font-medium text-slate-700">Aperçu</p>
+						<p
+							class="rounded-xl bg-slate-50 px-4 py-3 text-sm text-slate-950"
+							data-testid="date-preview"
+						>
+							{datePreview}
+						</p>
+					</div>
 				</div>
 
-				<div class="mt-6 flex items-center justify-end gap-3">
-					<button class="app-button app-button-secondary">Annuler</button>
-					<button onclick={handleSave} class="app-button app-button-primary">
-						Enregistrer les modifications
+				<div class="mt-5 flex items-start justify-between gap-4 rounded-2xl bg-slate-50/50 p-4">
+					<div class="flex-1">
+						<p id="dashboard-alerts-label" class="font-medium text-slate-950">
+							Alertes sur le tableau de bord
+						</p>
+						<p class="mt-1 text-sm text-slate-500">
+							Afficher le nombre d'alertes ouvertes sur la page d'accueil.
+						</p>
+					</div>
+					<button
+						type="button"
+						role="switch"
+						aria-checked={form.dashboard_alerts}
+						aria-labelledby="dashboard-alerts-label"
+						onclick={() => (form.dashboard_alerts = !form.dashboard_alerts)}
+						class="relative h-6 w-11 flex-shrink-0 rounded-full transition-colors duration-200 focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:outline-none {form.dashboard_alerts
+							? 'bg-blue-600'
+							: 'bg-slate-200'}"
+					>
+						<span
+							class="pointer-events-none absolute top-0.5 left-0.5 inline-block h-5 w-5 rounded-full bg-white shadow transition-transform duration-200 {form.dashboard_alerts
+								? 'translate-x-5'
+								: 'translate-x-0'}"
+						></span>
 					</button>
 				</div>
-			</div>
 
-			<div class="app-card p-6">
-				<div class="mb-6 border-b border-slate-100 pb-4">
-					<h3 class="text-lg font-semibold text-slate-950">Notifications</h3>
-					<p class="mt-1 text-sm text-slate-500">Gérez vos alertes et notifications.</p>
-				</div>
-
-				<div class="space-y-4">
-					<div
-						class="flex items-start justify-between gap-4 rounded-xl bg-slate-50/50 p-4 transition-colors hover:bg-slate-50"
+				{#if message}
+					<p
+						class="mt-5 rounded-xl px-4 py-3 text-sm {message.kind === 'ok'
+							? 'bg-green-50 text-green-700'
+							: 'bg-red-50 text-red-700'}"
+						role="status"
 					>
-						<div class="flex-1">
-							<p class="font-medium text-slate-950">Notifications par email</p>
-							<p class="mt-1 text-sm text-slate-500">
-								Recevoir les alertes et mises à jour par email.
-							</p>
-						</div>
+						{message.text}
+					</p>
+				{/if}
+
+				<div class="mt-6 flex flex-wrap items-center justify-between gap-3">
+					<button
+						type="button"
+						class="text-sm font-semibold text-slate-500 hover:text-slate-700"
+						onclick={restoreDefaults}
+					>
+						Valeurs par défaut
+					</button>
+					<div class="flex flex-wrap gap-3">
 						<button
-							aria-label="Notifications par email"
-							class="relative h-6 w-11 flex-shrink-0 rounded-full transition-colors duration-200 ease-in-out focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:outline-none"
-							class:bg-blue-600={settings.notifications.email}
-							class:bg-slate-200={!settings.notifications.email}
+							type="button"
+							class="app-button app-button-secondary"
+							onclick={cancel}
+							disabled={!dirty || saving}
 						>
-							<span
-								class="pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out"
-								class:translate-x-5={settings.notifications.email}
-								class:translate-x-0={!settings.notifications.email}
-							></span>
+							Annuler
 						</button>
-					</div>
-
-					<div
-						class="flex items-start justify-between gap-4 rounded-xl bg-slate-50/50 p-4 transition-colors hover:bg-slate-50"
-					>
-						<div class="flex-1">
-							<p class="font-medium text-slate-950">Notifications SMS</p>
-							<p class="mt-1 text-sm text-slate-500">Recevoir les alertes urgentes par SMS.</p>
-						</div>
-						<button
-							aria-label="Notifications SMS"
-							class="relative h-6 w-11 flex-shrink-0 rounded-full transition-colors duration-200 ease-in-out focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:outline-none"
-							class:bg-blue-600={settings.notifications.sms}
-							class:bg-slate-200={!settings.notifications.sms}
-						>
-							<span
-								class="pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out"
-								class:translate-x-5={settings.notifications.sms}
-								class:translate-x-0={!settings.notifications.sms}
-							></span>
-						</button>
-					</div>
-
-					<div
-						class="flex items-start justify-between gap-4 rounded-xl bg-slate-50/50 p-4 transition-colors hover:bg-slate-50"
-					>
-						<div class="flex-1">
-							<p class="font-medium text-slate-950">Notifications sur le dashboard</p>
-							<p class="mt-1 text-sm text-slate-500">Afficher les alertes sur la page d'accueil.</p>
-						</div>
-						<button
-							aria-label="Notifications sur le dashboard"
-							class="relative h-6 w-11 flex-shrink-0 rounded-full transition-colors duration-200 ease-in-out focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:outline-none"
-							class:bg-blue-600={settings.notifications.dashboard}
-							class:bg-slate-200={!settings.notifications.dashboard}
-						>
-							<span
-								class="pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out"
-								class:translate-x-5={settings.notifications.dashboard}
-								class:translate-x-0={!settings.notifications.dashboard}
-							></span>
+						<button type="submit" class="app-button app-button-primary" disabled={!dirty || saving}>
+							{saving ? 'Enregistrement…' : 'Enregistrer les modifications'}
 						</button>
 					</div>
 				</div>
-			</div>
+			</form>
 
+			<!-- Apparence -->
 			<div class="app-card p-6">
 				<div class="mb-6 border-b border-slate-100 pb-4">
 					<h3 class="text-lg font-semibold text-slate-950">Apparence</h3>
-					<p class="mt-1 text-sm text-slate-500">Personnalisez l'apparence de la plateforme.</p>
+					<p class="mt-1 text-sm text-slate-500">S'applique immédiatement.</p>
 				</div>
-
-				<div class="grid gap-4 sm:grid-cols-3">
-					<div
-						class="rounded-xl border-2 border-slate-200 p-4 transition-colors hover:border-blue-500"
-					>
-						<div class="flex items-center justify-between">
-							<span class="font-medium text-slate-950">Clair</span>
-							<div class="h-4 w-4 rounded-full bg-blue-600"></div>
-						</div>
-						<p class="mt-2 text-xs text-slate-500">Mode clair par défaut</p>
-					</div>
-					<div
-						class="rounded-xl border-2 border-slate-200 p-4 transition-colors hover:border-blue-500"
-					>
-						<div class="flex items-center justify-between">
-							<span class="font-medium text-slate-950">Sombre</span>
-							<div class="h-4 w-4 rounded-full bg-slate-800"></div>
-						</div>
-						<p class="mt-2 text-xs text-slate-500">Mode sombre</p>
-					</div>
-					<div
-						class="rounded-xl border-2 border-slate-200 p-4 transition-colors hover:border-blue-500"
-					>
-						<div class="flex items-center justify-between">
-							<span class="font-medium text-slate-950">Système</span>
-							<div class="h-4 w-4 rounded-full bg-gradient-to-br from-slate-200 to-slate-800"></div>
-						</div>
-						<p class="mt-2 text-xs text-slate-500">Adaptatif</p>
-					</div>
+				<div class="grid gap-3 sm:grid-cols-3" role="radiogroup" aria-label="Thème">
+					{#each THEMES as theme (theme.value)}
+						<button
+							type="button"
+							role="radio"
+							aria-checked={$preferences.theme === theme.value}
+							disabled={themeSaving}
+							onclick={() => chooseTheme(theme.value)}
+							class="rounded-2xl border-2 p-4 text-left transition-colors {$preferences.theme ===
+							theme.value
+								? 'border-blue-600 bg-blue-50'
+								: 'border-slate-200 hover:border-slate-300'}"
+						>
+							<div class="flex items-center justify-between">
+								<span class="font-semibold text-slate-950">{theme.label}</span>
+								<span class="h-5 w-5 rounded-full {theme.swatch}" aria-hidden="true"></span>
+							</div>
+							<p class="mt-1 text-sm text-slate-500">{theme.description}</p>
+						</button>
+					{/each}
 				</div>
+				{#if themeError}
+					<p class="mt-3 text-sm text-red-600">{themeError}</p>
+				{/if}
 			</div>
 		</div>
 
 		<div class="space-y-6">
+			<!-- Sécurité -->
 			<div class="app-card p-6">
-				<h3 class="text-lg font-semibold text-slate-950">Informations du compte</h3>
-				<div class="mt-6 space-y-4">
-					<div>
-						<p class="text-sm font-medium text-slate-500">Devise principale</p>
-						<p class="mt-1 text-sm text-slate-950">CDF (Franc congolais)</p>
-					</div>
-					<div>
-						<p class="text-sm font-medium text-slate-500">Fuseau horaire</p>
-						<p class="mt-1 text-sm text-slate-950">Africa/Kinshasa (GMT+2)</p>
-					</div>
-					<div>
-						<p class="text-sm font-medium text-slate-500">Langue</p>
-						<p class="mt-1 text-sm text-slate-950">Français</p>
-					</div>
-					<div>
-						<p class="text-sm font-medium text-slate-500">Format de date</p>
-						<p class="mt-1 text-sm text-slate-950">JJ/MM/AAAA</p>
-					</div>
-				</div>
-			</div>
-
-			<div class="app-card p-6">
-				<h3 class="text-lg font-semibold text-slate-950">Actions rapides</h3>
+				<h3 class="text-lg font-semibold text-slate-950">Sécurité</h3>
 				<div class="mt-4 space-y-3">
 					<button
-						class="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-left text-sm font-medium text-slate-700 transition-colors hover:border-slate-300 hover:bg-slate-50"
+						type="button"
+						class="flex w-full items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 text-left text-sm font-medium text-slate-700 transition-colors hover:border-slate-300 hover:bg-slate-50"
+						onclick={openPassword}
 					>
-						<svg class="mr-2 inline h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-							<path
-								stroke-linecap="round"
-								stroke-linejoin="round"
-								stroke-width="2"
-								d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"
-							/>
-							<path
-								stroke-linecap="round"
-								stroke-linejoin="round"
-								stroke-width="2"
-								d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
-							/>
+						<svg
+							class="h-4 w-4"
+							fill="none"
+							stroke="currentColor"
+							viewBox="0 0 24 24"
+							aria-hidden="true"
+						>
+							<rect x="4" y="11" width="16" height="10" rx="2" stroke-width="2" />
+							<path stroke-linecap="round" stroke-width="2" d="M8 11V7a4 4 0 118 0v4" />
 						</svg>
 						Modifier le mot de passe
 					</button>
-					<button
-						class="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-left text-sm font-medium text-slate-700 transition-colors hover:border-slate-300 hover:bg-slate-50"
+					<a
+						href="{resolve('/profile')}#securite"
+						class="flex w-full items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-700 transition-colors hover:border-slate-300 hover:bg-slate-50"
 					>
-						<svg class="mr-2 inline h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+						<svg
+							class="h-4 w-4"
+							fill="none"
+							stroke="currentColor"
+							viewBox="0 0 24 24"
+							aria-hidden="true"
+						>
 							<path
 								stroke-linecap="round"
 								stroke-linejoin="round"
 								stroke-width="2"
-								d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"
+								d="M12 3l8 4v5c0 5-3.5 8-8 9-4.5-1-8-4-8-9V7l8-4z"
 							/>
 						</svg>
-						Sécurité du compte
-					</button>
+						Double authentification
+					</a>
+					<a
+						href={resolve('/profile')}
+						class="flex w-full items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-700 transition-colors hover:border-slate-300 hover:bg-slate-50"
+					>
+						<svg
+							class="h-4 w-4"
+							fill="none"
+							stroke="currentColor"
+							viewBox="0 0 24 24"
+							aria-hidden="true"
+						>
+							<path
+								stroke-linecap="round"
+								stroke-linejoin="round"
+								stroke-width="2"
+								d="M15 17h5l-1.4-1.4A2 2 0 0118 14.2V11a6 6 0 10-12 0v3.2a2 2 0 01-.6 1.4L4 17h5m6 0a3 3 0 11-6 0"
+							/>
+						</svg>
+						Notifications (email, SMS)
+					</a>
 				</div>
+			</div>
+
+			<!-- Session -->
+			<div class="app-card p-6">
+				<h3 class="text-lg font-semibold text-slate-950">Session</h3>
+				<p class="mt-1 text-sm text-slate-500">
+					Connecté en tant que <span class="font-medium text-slate-700"
+						>{$session?.trader.email ?? ''}</span
+					>.
+				</p>
+				<button type="button" class="app-button app-button-danger mt-4 w-full" onclick={logout}
+					>Se déconnecter</button
+				>
 			</div>
 		</div>
 	</div>
 </section>
 
-<style>
-	.app-input {
-		width: 100%;
-		border-radius: 12px;
-		border: 1px solid #e2e8f0;
-		background: white;
-		padding: 10px 16px;
-		font-size: 14px;
-		color: #0f172a;
-		outline: none;
-		transition: all 200ms ease;
-	}
-	.app-input:focus {
-		border-color: #2563eb;
-		box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.1);
-	}
-	.app-input::placeholder {
-		color: #94a3b8;
-	}
-</style>
+{#if passwordOpen}
+	<div class="app-modal-backdrop" role="presentation">
+		<div
+			class="app-modal max-w-md p-6"
+			role="dialog"
+			aria-modal="true"
+			aria-labelledby="password-title"
+		>
+			<h2 id="password-title" class="text-lg font-semibold text-slate-950">
+				Modifier le mot de passe
+			</h2>
+			{#if passwordDone}
+				<p class="mt-3 rounded-xl bg-green-50 px-4 py-3 text-sm text-green-700" role="status">
+					Mot de passe modifié. Utilisez-le à votre prochaine connexion.
+				</p>
+				<div class="mt-5 flex justify-end">
+					<button
+						type="button"
+						class="app-button app-button-primary"
+						onclick={() => (passwordOpen = false)}>Fermer</button
+					>
+				</div>
+			{:else}
+				<form class="mt-4 space-y-4" onsubmit={submitPassword}>
+					<div class="space-y-2">
+						<label for="current-password" class="text-sm font-medium text-slate-700"
+							>Mot de passe actuel</label
+						>
+						<input
+							id="current-password"
+							type="password"
+							class="app-input"
+							autocomplete="current-password"
+							required
+							bind:value={currentPassword}
+						/>
+					</div>
+					<div class="space-y-2">
+						<label for="new-password" class="text-sm font-medium text-slate-700"
+							>Nouveau mot de passe</label
+						>
+						<input
+							id="new-password"
+							type="password"
+							class="app-input"
+							autocomplete="new-password"
+							minlength="12"
+							maxlength="72"
+							required
+							bind:value={newPassword}
+						/>
+						<p class="text-xs text-slate-400">Au moins 12 caractères.</p>
+					</div>
+					<div class="space-y-2">
+						<label for="confirm-password" class="text-sm font-medium text-slate-700"
+							>Confirmer le nouveau mot de passe</label
+						>
+						<input
+							id="confirm-password"
+							type="password"
+							class="app-input"
+							autocomplete="new-password"
+							required
+							bind:value={confirmPassword}
+						/>
+					</div>
+					{#if passwordError}
+						<p class="text-sm text-red-600">{passwordError}</p>
+					{/if}
+					<div class="flex justify-end gap-3 pt-1">
+						<button
+							type="button"
+							class="app-button app-button-secondary"
+							onclick={() => (passwordOpen = false)}>Annuler</button
+						>
+						<button type="submit" class="app-button app-button-primary" disabled={passwordBusy}>
+							{passwordBusy ? 'Enregistrement…' : 'Enregistrer'}
+						</button>
+					</div>
+				</form>
+			{/if}
+		</div>
+	</div>
+{/if}

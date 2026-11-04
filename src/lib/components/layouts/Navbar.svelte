@@ -14,7 +14,7 @@
 	<div class="container mx-auto flex items-center justify-between px-6 py-5">
 		<a href={resolve('/')} class="flex items-center gap-2" onclick={() => (isMenuOpen = false)}>
 			<span class="text-xl font-bold text-slate-950">
-				FX<span class="text-blue-600">.</span>
+				MOTUYA <span class="font-medium">Fx</span><span class="text-blue-600">.</span>
 			</span>
 		</a>
 

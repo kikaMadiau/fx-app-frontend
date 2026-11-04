@@ -1,0 +1,30 @@
+{
+	"name": "MOTUYA Fx. – Bureau de change",
+	"short_name": "MOTUYA Fx.",
+	"description": "Opérations de change, clients KYC et alertes AML.",
+	"lang": "fr",
+	"dir": "ltr",
+	"id": "/",
+	"start_url": "/dashboard",
+	"scope": "/",
+	"display": "standalone",
+	"orientation": "any",
+	"background_color": "#f6f8fb",
+	"theme_color": "#005ca9",
+	"categories": ["finance", "business"],
+	"icons": [
+		{ "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+		{ "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+		{
+			"src": "/icons/icon-maskable-512.png",
+			"sizes": "512x512",
+			"type": "image/png",
+			"purpose": "maskable"
+		}
+	],
+	"shortcuts": [
+		{ "name": "Transactions", "url": "/transactions", "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }] },
+		{ "name": "Clients & KYC", "url": "/customers", "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }] },
+		{ "name": "Alertes", "url": "/alerts", "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }] }
+	]
+}
