@@ -6,9 +6,12 @@ export type Trader = {
 	email: string;
 	phone: string;
 	status: string;
-	role: string;
+	role?: string;
+	roles?: string[];
+	permissions?: string[];
 	store_id: number;
 	is_active: boolean;
+	is_platform_admin?: boolean;
 };
 
 export function getTraderDisplayName(trader: Trader): string {

@@ -43,6 +43,10 @@
 		{
 			label: 'Paramètres',
 			href: '/settings'
+		},
+		{
+			label: 'Déconnexion',
+			href: '/logout'
 		}
 	] as const;
 

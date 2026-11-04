@@ -16,6 +16,19 @@ export function listCustomers() {
 	return apiRequest<CustomerPage>('/customers?limit=100');
 }
 
+export type KYCStatus =
+	| 'UNVERIFIED'
+	| 'PARTIALLY_VERIFIED'
+	| 'VERIFIED'
+	| 'ENHANCED_VERIFICATION';
+
+export function updateCustomerKYCStatus(customerId: number, kyc_status: KYCStatus) {
+	return apiRequest<{ kyc_status: KYCStatus }>(`/customers/${customerId}/kyc/status`, {
+		method: 'PATCH',
+		body: { kyc_status }
+	});
+}
+
 export async function searchClientByPhone(phone: string): Promise<Client> {
 	const normalizedPhone = normalizePhone(phone);
 

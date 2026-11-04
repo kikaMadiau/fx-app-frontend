@@ -22,8 +22,19 @@ export async function listRiskFlags(): Promise<Page<RiskFlag>> {
 	return { ...page, items: page.items ?? [] };
 }
 
-export function transitionRiskFlag(id: number, status: string) {
-	return apiRequest<RiskFlag>(`/risk-flags/${id}/status`, { method: 'PATCH', body: { status } });
+export function transitionRiskFlag(
+	id: number,
+	status: string,
+	options: { resolution_note?: string; assigned_to?: number } = {}
+) {
+	return apiRequest<RiskFlag>(`/risk-flags/${id}/status`, {
+		method: 'PATCH',
+		body: {
+			status,
+			...(options.resolution_note ? { resolution_note: options.resolution_note } : {}),
+			...(options.assigned_to ? { assigned_to: options.assigned_to } : {})
+		}
+	});
 }
 
 export function createRiskFlag(customerId: number, reason: string) {

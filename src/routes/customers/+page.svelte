@@ -1,7 +1,10 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { listCustomers } from '$lib/api/clients.js';
-	import { createRiskFlag, deleteRiskFlag, listRiskFlags } from '$lib/api/risk-flags.js';
+	import { listCustomers, updateCustomerKYCStatus, type KYCStatus } from '$lib/api/clients.js';
+	import { apiRequest } from '$lib/api/http.js';
+	import { session } from '$lib/stores/session.js';
+	import type { Trader } from '$lib/types/trader.js';
+	import { createRiskFlag, listRiskFlags, transitionRiskFlag } from '$lib/api/risk-flags.js';
 	import { ApiError } from '$lib/utils/api-errors.js';
 	type Customer = {
 		id: string;
@@ -17,9 +20,22 @@
 	let customers = $state<Customer[]>([]);
 	let loading = $state(true);
 	let loadError = $state('');
+	let canUpdateKYC = $state(false);
+	let canResolveFlags = $state(false);
+	let currentTraderId = $state(0);
+	let savingKYCFor = $state<number | null>(null);
+	let removingFlagFor = $state<number | null>(null);
 	onMount(async () => {
 		try {
-			const page = await listCustomers();
+			const [trader, page] = await Promise.all([
+				apiRequest<Trader>('/auth/me'),
+				listCustomers()
+			]);
+			session.update(currentSession => currentSession ? { ...currentSession, trader } : currentSession);
+			currentTraderId = trader.id;
+			const roles = Array.isArray(trader.roles) ? trader.roles : (trader.role ?? '').split(',');
+			canUpdateKYC = roles.some(role => role.trim().toUpperCase() === 'COMPLIANCE_OFFICER');
+			canResolveFlags = trader.permissions?.includes('risk_flag:investigate') ?? false;
 			customers = page.items.map(c => ({ id: `CL-${c.id}`, customerId: c.id, name: c.full_name, phone: c.phone,
 				kyc: c.kyc_status, transactions: c.transaction_count, flagged: c.open_risk_flags > 0,
 				flagReason: c.latest_flag_reason ?? '' }));
@@ -42,6 +58,20 @@
 	];
 	function kycLabel(status: string) {
 		return ({ VERIFIED: 'Vérifié', UNVERIFIED: 'Non vérifié', PARTIALLY_VERIFIED: 'Partiel', ENHANCED_VERIFICATION: 'Vérification renforcée' } as Record<string, string>)[status] ?? status;
+	}
+
+	async function updateKYCStatus(customer: Customer, status: KYCStatus) {
+		if (status === customer.kyc) return;
+		actionError = '';
+		savingKYCFor = customer.customerId;
+		try {
+			const profile = await updateCustomerKYCStatus(customer.customerId, status);
+			customer.kyc = profile.kyc_status;
+		} catch (error) {
+			actionError = error instanceof ApiError ? error.message : 'Impossible de modifier le statut KYC.';
+		} finally {
+			savingKYCFor = null;
+		}
 	}
 
 	function getSelectedCustomer() {
@@ -77,12 +107,21 @@
 
 	async function removeFlag(customer: Customer) {
 		actionError = '';
+		removingFlagFor = customer.customerId;
 		try {
 			const flags = (await listRiskFlags()).items.filter(flag => flag.customer_id === customer.customerId && ['OPEN', 'IN_REVIEW'].includes(flag.status));
-			for (const flag of flags) await deleteRiskFlag(flag.id);
+			for (const flag of flags) {
+				if (flag.status === 'OPEN') {
+					await transitionRiskFlag(flag.id, 'IN_REVIEW', { assigned_to: currentTraderId });
+				}
+				await transitionRiskFlag(flag.id, 'RESOLVED', {
+					resolution_note: 'Surveillance retirée depuis la fiche client.'
+				});
+			}
 			customer.flagged = false;
 			customer.flagReason = '';
 		} catch (error) { actionError = error instanceof ApiError ? error.message : 'Impossible de retirer la surveillance.'; }
+		finally { removingFlagFor = null; }
 	}
 </script>
 
@@ -125,7 +164,19 @@
 							</td>
 							<td>{customer.phone}</td>
 							<td>
-								<span class="font-semibold text-slate-950">{kycLabel(customer.kyc)}</span>
+								{#if canUpdateKYC}
+									<select class="app-input min-w-48" aria-label={`Statut KYC de ${customer.name}`}
+										value={customer.kyc}
+										disabled={savingKYCFor === customer.customerId}
+										onchange={(event) => updateKYCStatus(customer, (event.currentTarget as HTMLSelectElement).value as KYCStatus)}>
+										<option value="UNVERIFIED">Non vérifié</option>
+										<option value="PARTIALLY_VERIFIED">Partiel</option>
+										<option value="VERIFIED">Vérifié</option>
+										<option value="ENHANCED_VERIFICATION">Vérification renforcée</option>
+									</select>
+								{:else}
+									<span class="font-semibold text-slate-950">{kycLabel(customer.kyc)}</span>
+								{/if}
 							</td>
 							<td class="font-semibold text-slate-950">{customer.transactions}</td>
 							<td>
@@ -137,12 +188,15 @@
 							</td>
 							<td class="text-right">
 								{#if customer.flagged}
-									<button
-										class="app-button app-button-secondary px-3 py-2"
-										onclick={() => removeFlag(customer)}
-									>
-										Retirer
-									</button>
+					{#if canResolveFlags}
+						<button
+							class="app-button app-button-secondary px-3 py-2"
+							disabled={removingFlagFor === customer.customerId}
+							onclick={() => removeFlag(customer)}
+						>
+							{removingFlagFor === customer.customerId ? 'Retrait…' : 'Retirer'}
+						</button>
+					{/if}
 								{:else}
 									<button
 										class="app-button app-button-danger px-3 py-2"

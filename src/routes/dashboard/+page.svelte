@@ -4,11 +4,15 @@
 	import { listTransactions, type TransactionListItem } from '$lib/api/transactions.js';
 	import { listConfiguredAnalyses } from '$lib/api/analyses.js';
 	import { ApiError } from '$lib/utils/api-errors.js';
+	import { session } from '$lib/stores/session.js';
+	import PlatformAdminDashboard from '$lib/components/dashboard/PlatformAdminDashboard.svelte';
 	let summary = $state<DashboardSummary | null>(null);
 	let recentTransactions = $state<TransactionListItem[]>([]);
 	let exchangeRates = $state<Record<string, { buy_rate: number; sell_rate: number }>>({});
 	let error = $state('');
 	onMount(async () => {
+		if ($session?.trader.is_platform_admin) return;
+
 		try {
 			const results = await Promise.allSettled([getDashboardSummary(), listTransactions(3), listConfiguredAnalyses()]);
 			if (results[0].status === 'fulfilled') summary = results[0].value;
@@ -29,6 +33,9 @@
 	] : []);
 </script>
 
+{#if $session?.trader.is_platform_admin}
+	<PlatformAdminDashboard />
+{:else}
 <section class="app-shell">
 	<div class="app-header">
 		<div>
@@ -127,3 +134,4 @@
 		</div>
 	</div>
 </section>
+{/if}
