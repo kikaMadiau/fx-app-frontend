@@ -229,6 +229,7 @@
 		detailError = '';
 		selectedAlert = alert;
 		selected = null;
+		if (!alert.transaction_id) return;
 		try {
 			const transaction = await getTransaction(alert.transaction_id);
 			selected = {
@@ -535,8 +536,9 @@
 									<span class="alert-badge app-badge {risk.badge} shrink-0">{risk.label}</span>
 								</div>
 								<p class="mt-0.5 truncate text-[11px] text-slate-500">
-									{alert.customer_name || 'Client inconnu'} · n° {alert.transaction_id} ·
-									{shortDate(alert.created_at)}
+					{alert.customer_name || 'Client inconnu'}
+					{#if alert.transaction_id} · transaction n° {alert.transaction_id}{/if}
+					· {shortDate(alert.created_at)}
 								</p>
 							</button>
 						</li>
@@ -568,7 +570,11 @@
 			>
 				<div>
 					<h2 id="detail-title" class="text-lg font-semibold text-slate-950">
-						{selected ? `Transaction n° ${selected.id}` : 'Chargement…'}
+						{selected
+							? `Transaction n° ${selected.id}`
+							: selectedAlert
+								? `Alerte n° ${selectedAlert.id}`
+								: 'Chargement…'}
 					</h2>
 					{#if selected}
 						<p class="mt-1 text-sm text-slate-500">{shortDate(selected.created_at)}</p>

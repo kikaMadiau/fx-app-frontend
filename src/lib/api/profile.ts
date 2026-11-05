@@ -1,6 +1,6 @@
 import { apiFetchBlob, apiRequest } from '$lib/api/http.js';
 import { ApiError } from '$lib/utils/api-errors.js';
-import { replaceSessionToken } from '$lib/stores/session.js';
+import { getStoredTrader, replaceSessionToken, updateSessionTrader } from '$lib/stores/session.js';
 import type { Preferences } from '$lib/stores/preferences.js';
 import type {
 	NotificationPreferences,
@@ -171,4 +171,6 @@ export async function changePassword(currentPassword: string, newPassword: strin
 		})
 	);
 	if (result?.access_token) replaceSessionToken(result.access_token);
+	const trader = getStoredTrader();
+	if (trader?.must_change_password) updateSessionTrader({ ...trader, must_change_password: false });
 }

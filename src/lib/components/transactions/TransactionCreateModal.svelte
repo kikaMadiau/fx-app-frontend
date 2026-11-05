@@ -17,6 +17,7 @@
 	import { ApiError, getUserFacingErrorMessage } from '$lib/utils/api-errors.js';
 	import { fromApiIdType, toApiIdType } from '$lib/utils/identity.js';
 	import { get } from 'svelte/store';
+	import { session } from '$lib/stores/session.js';
 	import { preferences } from '$lib/stores/preferences.js';
 	import { formatPhoneDisplay } from '$lib/utils/phone.js';
 	import IdDocumentCapture from '$lib/components/customers/IdDocumentCapture.svelte';
@@ -75,6 +76,14 @@
 	let formError = $state('');
 	let isSubmitting = $state(false);
 	let successMessage = $state('');
+	const canManageKyc = $derived.by(() => {
+		const trader = $session?.trader;
+		if (!trader) return false;
+		if (trader.permissions) return trader.permissions.includes('kyc:update');
+		return [trader.role, ...(trader.roles ?? [])]
+			.flatMap((role) => role.split(','))
+			.some((role) => role.trim().toUpperCase() === 'COMPLIANCE_OFFICER');
+	});
 
 	// Photos de la pièce prises pendant la saisie : envoyées après la création de la transaction
 	// (un nouveau client n'existe en base qu'à ce moment-là).
@@ -115,6 +124,7 @@
 	}
 
 	async function uploadPendingIdPhotos(customerId: number | undefined) {
+		if (!canManageKyc) return;
 		const pending = (['front', 'back'] as const).filter((side) => idPhotos[side]);
 		if (!pending.length) return;
 		if (!customerId) {
@@ -143,10 +153,27 @@
 	onMount(async () => {
 		try {
 			rates = await getExchangeRates();
+			applyDefaultRate();
 		} catch {
 			// Sans les taux, l'équivalent en dollars d'une opération en EUR ou GBP reste approximatif.
 		}
 	});
+
+	function applyDefaultRate() {
+		const quote = rates.find((rate) => rate.pair === `${form.currency}/CDF`);
+		const value = form.type === 'Vente' ? quote?.sell_rate : quote?.buy_rate;
+		form.rate = value && Number.isFinite(value) && value > 0 ? String(value) : '';
+	}
+
+	function changeTransactionType(value: string) {
+		form.type = value;
+		applyDefaultRate();
+	}
+
+	function changeCurrency(value: string) {
+		form.currency = value;
+		applyDefaultRate();
+	}
 
 	async function loadKycRisk(customerId: number) {
 		kycRisk = null;
@@ -188,6 +215,7 @@
 
 	/** Client existant : enregistre la pièce saisie si elle diffère de celle du dossier. */
 	async function saveExistingIdentity(client: Client) {
+		if (!canManageKyc) return;
 		const idType = toApiIdType(form.identityDocumentType) ?? '';
 		const idNumber = form.identityDocumentNumber.trim();
 		const expiry = form.identityDocumentExpiry.trim();
@@ -210,6 +238,7 @@
 		scenario = null;
 		currentStep = 'scenario';
 		form = newForm();
+		applyDefaultRate();
 		lookupState = createIdleLookupState();
 		foundClient = null;
 		fieldErrors = {};
@@ -860,12 +889,21 @@
 								>(recommandé)</span
 							>
 						</p>
-						<IdDocumentCapture previews={idPreviews} onCapture={captureIdPhoto} />
+						<IdDocumentCapture
+							previews={idPreviews}
+							readOnly={!canManageKyc}
+							onCapture={captureIdPhoto}
+						/>
 					</div>
 
 					<div>
 						<label for="type" class="mb-2 block text-sm font-semibold text-slate-700">Type</label>
-						<select id="type" class={inputClass('type')} bind:value={form.type}>
+						<select
+							id="type"
+							class={inputClass('type')}
+							value={form.type}
+							onchange={(event) => changeTransactionType(event.currentTarget.value)}
+						>
 							<option value="Achat">Achat</option>
 							<option value="Vente">Vente</option>
 						</select>
@@ -875,7 +913,12 @@
 						<label for="currency" class="mb-2 block text-sm font-semibold text-slate-700"
 							>Devise</label
 						>
-						<select id="currency" class={inputClass('currency')} bind:value={form.currency}>
+						<select
+							id="currency"
+							class={inputClass('currency')}
+							value={form.currency}
+							onchange={(event) => changeCurrency(event.currentTarget.value)}
+						>
 							<option value="USD">USD</option>
 							<option value="EUR">EUR</option>
 							<option value="GBP">GBP</option>
@@ -905,13 +948,11 @@
 						<label for="rate" class="mb-2 block text-sm font-semibold text-slate-700">Taux</label>
 						<input
 							id="rate"
-							type="number"
-							min="0"
-							step="0.01"
+							type="text"
+							readonly
 							class={inputClass('rate')}
-							placeholder="Ex: 2780"
-							inputmode="decimal"
-							bind:value={form.rate}
+							value={form.rate}
+							placeholder="Chargement du taux…"
 						/>
 						{#if fieldErrors.rate}
 							<p class="mt-1 text-sm text-red-600">{fieldErrors.rate}</p>

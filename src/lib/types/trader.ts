@@ -12,6 +12,7 @@ export type Trader = {
 	store_id: number;
 	is_active: boolean;
 	is_platform_admin?: boolean;
+	must_change_password?: boolean;
 	store?: { id: number; name: string; bcc_license_number?: string } | null;
 };
 

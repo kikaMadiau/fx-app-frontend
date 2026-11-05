@@ -70,7 +70,7 @@
 			}
 			// Prénom retenu pour le message d'accueil de la prochaine visite (« Bonsoir, Michael »).
 			rememberVisit(result.trader.first_name ?? '');
-			await goto(resolve('/dashboard'));
+			await goto(resolve(result.trader.must_change_password ? '/settings' : '/dashboard'));
 		} catch (error) {
 			formError = loginErrorMessage(error);
 			otpCode = '';

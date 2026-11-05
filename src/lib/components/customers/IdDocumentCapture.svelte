@@ -12,11 +12,13 @@
 		previews = { front: null, back: null },
 		busySide = null,
 		disabled = false,
+		readOnly = false,
 		onCapture
 	}: {
 		previews?: Record<IdDocumentSide, string | null>; // URL des images à afficher
 		busySide?: IdDocumentSide | null;
 		disabled?: boolean;
+		readOnly?: boolean;
 		onCapture: (side: IdDocumentSide, photo: Blob) => void | Promise<void>;
 	} = $props();
 
@@ -142,6 +144,7 @@
 					</svg>
 				{/if}
 			</div>
+			{#if !readOnly}
 			<div class="mt-2 flex gap-2">
 				<button
 					type="button"
@@ -176,6 +179,7 @@
 				data-testid="id-file-{side}"
 				onchange={(e) => onFile(side, e)}
 			/>
+			{/if}
 		</div>
 	{/each}
 </div>

@@ -9,28 +9,27 @@ export type Session = {
 	trader: Trader;
 } | null;
 
-function readStoredSession(): Session {
-	if (!browser) return null;
-
+// Access tokens stay in memory only. A page reload requires a fresh login, but
+// injected scripts cannot recover a persisted bearer token from localStorage.
+let currentSession: Session = null;
+export const session = writable<Session>(currentSession);
+if (browser) {
 	try {
-		const raw = localStorage.getItem(STORAGE_KEY);
-		return raw ? (JSON.parse(raw) as Session) : null;
+		localStorage.removeItem(STORAGE_KEY);
 	} catch {
-		return null;
+		// Storage may be unavailable; session tokens are never written there.
 	}
 }
 
-export const session = writable<Session>(readStoredSession());
-
 export function setSession(value: Session) {
-	session.set(value);
-
 	if (!browser) return;
-
-	if (value) {
-		localStorage.setItem(STORAGE_KEY, JSON.stringify(value));
-	} else {
+	currentSession = value;
+	session.set(value);
+	// Remove any session written by older versions of the application.
+	try {
 		localStorage.removeItem(STORAGE_KEY);
+	} catch {
+		// Storage may be unavailable; session tokens are never written there.
 	}
 }
 
@@ -39,21 +38,21 @@ export function clearSession() {
 }
 
 export function getStoredAccessToken(): string | null {
-	return readStoredSession()?.accessToken ?? null;
+	return browser ? (currentSession?.accessToken ?? null) : null;
 }
 
 export function getStoredTrader(): Trader | null {
-	return readStoredSession()?.trader ?? null;
+	return browser ? (currentSession?.trader ?? null) : null;
 }
 
 /** Remplace le jeton de la session en cours (ex. après un changement de mot de passe). */
 export function replaceSessionToken(accessToken: string) {
-	const current = readStoredSession();
+	const current = currentSession;
 	if (current) setSession({ ...current, accessToken });
 }
 
 /** Met à jour les informations du cambiste connecté (ex. après modification du profil). */
 export function updateSessionTrader(trader: Trader) {
-	const current = readStoredSession();
+	const current = currentSession;
 	if (current) setSession({ ...current, trader });
 }

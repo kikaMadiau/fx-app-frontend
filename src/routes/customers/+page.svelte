@@ -35,15 +35,27 @@
 
 	// Dossier KYC ; seule la conformité valide un dossier et accorde une dérogation (kyc:verify).
 	let kycCustomer = $state<Customer | null>(null);
-	const canVerifyKyc = $derived($session?.trader.role === 'COMPLIANCE_OFFICER');
+	const canEditKyc = $derived(hasPermission('kyc:update', ['COMPLIANCE_OFFICER']));
+	function hasPermission(permission: string, fallbackRoles: string[]): boolean {
+		const trader = $session?.trader;
+		if (!trader) return false;
+		if (trader.permissions) return trader.permissions.includes(permission);
+
+		const roles = [trader.role, ...(trader.roles ?? [])]
+			.flatMap((role) => role.split(','))
+			.map((role) => role.trim().toUpperCase());
+		return fallbackRoles.some((role) => roles.includes(role));
+	}
+	const canVerifyKyc = $derived(hasPermission('kyc:validate', ['COMPLIANCE_OFFICER']));
 
 	async function closeKycModal(changed: boolean) {
 		kycCustomer = null;
 		if (changed) await loadCustomers();
 	}
 
-	// L'administrateur n'a pas le droit de créer une alerte (permission risk_flag:create).
-	const canFlag = $derived($session?.trader.role !== 'ADMIN');
+	const canFlag = $derived(
+		hasPermission('riskflag:create', ['COMPLIANCE_OFFICER'])
+	);
 
 	let isFlagModalOpen = $state(false);
 	let selectedCustomer = $state<Customer | null>(null);
@@ -534,8 +546,10 @@
 					</h2>
 					<p class="mt-1 text-sm text-slate-500">
 						{photoCustomer.id_type ? fromApiIdType(photoCustomer.id_type) : 'Type non renseigné'}
-						{photoCustomer.id_number ? `· n° ${photoCustomer.id_number}` : ''}. Chaque photo est
-						enregistrée dès qu'elle est prise.
+						{photoCustomer.id_number ? `· n° ${photoCustomer.id_number}` : ''}.
+						{canEditKyc
+							? "Chaque photo est enregistrée dès qu'elle est prise."
+							: 'Consultation seule : seul le rôle conformité peut enregistrer une photo.'}
 					</p>
 				</div>
 				<button
@@ -552,7 +566,12 @@
 				{#if photoStatus === null && !photoError}
 					<p class="text-sm text-slate-500">Chargement…</p>
 				{:else}
-					<IdDocumentCapture previews={photoPreviews} busySide={photoBusy} onCapture={savePhoto} />
+					<IdDocumentCapture
+						previews={photoPreviews}
+						busySide={photoBusy}
+						readOnly={!canEditKyc}
+						onCapture={savePhoto}
+					/>
 					{#if photoStatus}
 						<p class="mt-3 text-xs text-slate-500" data-testid="photo-dates">
 							{#each ['front', 'back'] as const as side (side)}
@@ -582,5 +601,10 @@
 {/if}
 
 {#if kycCustomer}
-	<KycDossierModal customer={kycCustomer} canVerify={canVerifyKyc} onClose={closeKycModal} />
+	<KycDossierModal
+		customer={kycCustomer}
+		canEdit={canEditKyc}
+		canVerify={canVerifyKyc}
+		onClose={closeKycModal}
+	/>
 {/if}

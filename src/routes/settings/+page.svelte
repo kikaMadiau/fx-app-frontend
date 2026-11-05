@@ -66,6 +66,7 @@
 	let passwordBusy = $state(false);
 	let passwordError = $state('');
 	let passwordDone = $state(false);
+	const mandatoryPasswordChange = $derived($session?.trader.must_change_password === true);
 
 	const dirty = $derived(
 		form.currency !== $preferences.currency ||
@@ -84,6 +85,7 @@
 			return;
 		}
 		try {
+			if ($session?.trader.must_change_password) openPassword();
 			const response = await getProfile();
 			if (response.profile.preferences) {
 				setPreferences(response.profile.preferences);
@@ -428,17 +430,22 @@
 			aria-labelledby="password-title"
 		>
 			<h2 id="password-title" class="text-lg font-semibold text-slate-950">
-				Modifier le mot de passe
+				{mandatoryPasswordChange ? 'Choisir un nouveau mot de passe' : 'Modifier le mot de passe'}
 			</h2>
+			{#if mandatoryPasswordChange}
+				<p class="mt-2 text-sm text-slate-600">
+					Vous devez remplacer votre mot de passe temporaire pour accéder à votre compte.
+				</p>
+			{/if}
 			{#if passwordDone}
 				<p class="mt-3 rounded-xl bg-green-50 px-4 py-3 text-sm text-green-700" role="status">
-					Mot de passe modifié. Utilisez-le à votre prochaine connexion.
+					Mot de passe modifié avec succès.
 				</p>
 				<div class="mt-5 flex justify-end">
 					<button
 						type="button"
 						class="app-button app-button-primary"
-						onclick={() => (passwordOpen = false)}>Fermer</button
+							onclick={() => (passwordOpen = false)}>Continuer</button
 					>
 				</div>
 			{:else}
@@ -489,11 +496,13 @@
 						<p class="text-sm text-red-600">{passwordError}</p>
 					{/if}
 					<div class="flex justify-end gap-3 pt-1">
-						<button
-							type="button"
-							class="app-button app-button-secondary"
-							onclick={() => (passwordOpen = false)}>Annuler</button
-						>
+						{#if !mandatoryPasswordChange}
+							<button
+								type="button"
+								class="app-button app-button-secondary"
+								onclick={() => (passwordOpen = false)}>Annuler</button
+							>
+						{/if}
 						<button type="submit" class="app-button app-button-primary" disabled={passwordBusy}>
 							{passwordBusy ? 'Enregistrement…' : 'Enregistrer'}
 						</button>

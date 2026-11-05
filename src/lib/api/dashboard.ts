@@ -29,7 +29,7 @@ export type DashboardAlert = {
 	reason: string;
 	level: string;
 	status: string;
-	transaction_id: number;
+	transaction_id?: number | null;
 	customer_name: string;
 	created_at: string;
 };

@@ -39,7 +39,6 @@ function buildTransactionPayload(form: TransactionFormData): TransactionPayload 
 		currency: form.currency,
 		target_currency: TARGET_CURRENCY,
 		type: form.type,
-		rate: Number(getFieldValue(form.rate)) || 0,
 		trader_id: getCurrentTraderId()
 	};
 }

@@ -13,7 +13,6 @@ export type TransactionPayload = {
 	currency: TransactionCurrency;
 	target_currency: string;
 	type: TransactionType;
-	rate: number;
 	trader_id: number;
 	customer_id?: number;
 };

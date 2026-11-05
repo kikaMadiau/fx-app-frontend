@@ -31,10 +31,13 @@
 
 	let {
 		customer,
+		canEdit,
 		canVerify,
 		onClose
 	}: {
 		customer: CustomerSummary;
+		/** Conformité : peut modifier les données KYC du dossier. */
+		canEdit: boolean;
 		/** Conformité : peut valider le dossier et accorder une dérogation. */
 		canVerify: boolean;
 		onClose: (changed: boolean) => void;
@@ -234,7 +237,13 @@
 				Impossible de charger le dossier : {loadError}
 			</p>
 		{:else}
+			<fieldset disabled={!canEdit} class="contents">
 			<div class="space-y-6 px-6 py-5">
+				{#if !canEdit}
+					<p class="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+						Consultation seule. La modification du dossier KYC est réservée à la conformité.
+					</p>
+				{/if}
 				{#if risk}
 					{@const level = riskLevel(risk.risk_level)}
 					{@const status = kycStatus(risk.kyc_status)}
@@ -698,18 +707,21 @@
 					<p class="text-sm text-emerald-700" role="status">{notice}</p>
 				{/if}
 			</div>
+			</fieldset>
 
 			<div class="flex justify-end gap-3 border-t border-slate-100 px-6 py-4">
 				<button class="app-button app-button-secondary px-4 py-2" onclick={() => onClose(changed)}>
 					Fermer
 				</button>
-				<button
-					class="app-button rounded-lg bg-blue-600 px-4 py-2 text-white hover:bg-blue-700"
-					disabled={saving}
-					onclick={save}
-				>
-					{saving ? 'Enregistrement…' : 'Enregistrer le dossier'}
-				</button>
+				{#if canEdit}
+					<button
+						class="app-button rounded-lg bg-blue-600 px-4 py-2 text-white hover:bg-blue-700"
+						disabled={saving}
+						onclick={save}
+					>
+						{saving ? 'Enregistrement…' : 'Enregistrer le dossier'}
+					</button>
+				{/if}
 			</div>
 		{/if}
 	</div>
